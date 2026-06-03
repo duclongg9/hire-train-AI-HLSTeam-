@@ -1,0 +1,31 @@
+project_id = "hiretrain-ai"
+
+[api]
+port = 54321
+host = "127.0.0.1"
+
+[db]
+port = 54322
+host = "127.0.0.1"
+shadow_port = 54320
+
+[studio]
+port = 54323
+host = "127.0.0.1"
+
+[inbox]
+port = 54324
+host = "127.0.0.1"
+
+[functions]
+port = 54325
+host = "127.0.0.1"
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/*"]
+jwt_expiry = 3600
+enable_signup = true
+
+[analytics]
+enabled = false

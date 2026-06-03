@@ -1,0 +1,72 @@
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+variables:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  AWS_REGION: "us-east-1"
+
+# --- Frontend Jobs ---
+frontend:lint:
+  image: node:${NODE_VERSION}
+  stage: lint
+  script:
+    - cd frontend
+    - npm ci
+    - npm run lint
+
+frontend:build:
+  image: node:${NODE_VERSION}
+  stage: build
+  script:
+    - cd frontend
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - frontend/.next/
+    expire_in: 1 week
+
+# --- Backend Jobs ---
+backend:lint:
+  image: python:${PYTHON_VERSION}
+  stage: lint
+  script:
+    - cd backend
+    - pip install -r requirements.txt
+    - pip install flake8 black
+    - black --check .
+    - flake8 .
+
+backend:test:
+  image: python:${PYTHON_VERSION}
+  stage: test
+  script:
+    - cd backend
+    - pip install -r requirements.txt
+    - pip install pytest
+    - pytest
+
+# --- Deploy Jobs ---
+deploy:staging:
+  stage: deploy
+  script:
+    - echo "Deploying to staging environment..."
+    # Add AWS/Docker deployment scripts here
+  environment:
+    name: staging
+  only:
+    - develop
+
+deploy:production:
+  stage: deploy
+  script:
+    - echo "Deploying to production environment..."
+    # Add AWS/Docker deployment scripts here
+  environment:
+    name: production
+  only:
+    - main
