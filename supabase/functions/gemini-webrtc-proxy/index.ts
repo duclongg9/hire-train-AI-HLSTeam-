@@ -1,9 +1,12 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
+// Declare Deno globally to satisfy the built-in TypeScript compiler
+declare const Deno: any;
+
 console.log("Gemini WebRTC Proxy function started")
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } })
   }
@@ -20,7 +23,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ message: "SDP proxy successful", answerSdp: "..." }),
       { headers: { "Content-Type": "application/json", 'Access-Control-Allow-Origin': '*' } },
     )
-  } catch (error) {
+  } catch (error: any) {
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { "Content-Type": "application/json", 'Access-Control-Allow-Origin': '*' } },
