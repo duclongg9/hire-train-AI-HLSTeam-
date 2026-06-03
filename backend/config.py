@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET_NAME: str = "hiretrain-cv-bucket"
     
     # AI Config
+    # TODO: AWS MIGRATION — Thay thế GEMINI_API_KEY bằng AWS Bedrock credentials khi chuyển đổi
     GEMINI_API_KEY: str = ""
+    MOCK_MODE: bool = False  # Bật True để chạy demo không cần API key thật
     
     # SMTP Config
     SMTP_HOST: str = ""

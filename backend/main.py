@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from app.database.connection import check_db_connection
-from app.api.v1 import campaigns, candidates, ai_core
+from app.api.v1 import campaigns, candidates, ai_core, interview
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +45,8 @@ app = FastAPI(
     version="1.0.0",
     description=(
         "Backend API cho HireTrain AI — Hệ thống tuyển dụng thông minh "
-        "sử dụng Gemini AI, WebRTC Voice Interview và AWS."
+        "sử dụng AWS AI Services, WebRTC Voice Interview và AWS S3."
+        # TODO: AWS MIGRATION — description đã cập nhật phản ánh chuyển đổi sang AWS AI
     ),
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     docs_url=f"{settings.API_V1_STR}/docs",
@@ -83,6 +84,11 @@ app.include_router(
     ai_core.router,
     prefix=f"{settings.API_V1_STR}/ai",
     tags=["AI Core"],
+)
+app.include_router(
+    interview.router,
+    prefix=f"{settings.API_V1_STR}/interview",
+    tags=["Virtual Interview"],
 )
 
 
