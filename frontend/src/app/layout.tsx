@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "HireTrain AI",
-  description: "AI-Powered HR Recruitment and WebRTC Voice Interviews",
+  title: "HireTrain AI — Intelligent Recruitment Platform",
+  description: "AI-Powered HR Recruitment with AWS AI Services & WebRTC Voice Interviews",
 };
 
 export default function RootLayout({
@@ -13,7 +13,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased min-h-screen bg-background text-foreground">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
+      <body className="antialiased">
         {children}
       </body>
     </html>
