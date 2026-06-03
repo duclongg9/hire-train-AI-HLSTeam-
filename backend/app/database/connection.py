@@ -14,22 +14,28 @@ from typing import Generator
 from config import settings
 
 # ---------------------------------------------------------------------------
-# Engine — kết nối AWS RDS PostgreSQL
+# Engine — kết nối database (PostgreSQL / SQLite cho dev)
 # ---------------------------------------------------------------------------
-engine = create_engine(
-    settings.DATABASE_URL,
-    poolclass=QueuePool,
-    pool_size=10,           # Số kết nối tối thiểu trong pool
-    max_overflow=20,        # Số kết nối bổ sung khi pool đầy
-    pool_pre_ping=True,     # Kiểm tra kết nối còn sống trước khi dùng
-    pool_recycle=1800,      # Recycle connection sau 30 phút (tránh RDS timeout)
-    echo=settings.DEBUG,    # Log SQL query khi ở chế độ DEBUG
-    connect_args={
-        "connect_timeout": 10,
-        # Bật SSL cho AWS RDS (production)
-        # "sslmode": "require",
-    },
-)
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+_engine_kwargs: dict = {
+    "echo": settings.DEBUG,
+}
+
+if _is_sqlite:
+    # SQLite không hỗ trợ pool phức tạp hay connect_args của psycopg2
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    _engine_kwargs.update({
+        "poolclass": QueuePool,
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+        "connect_args": {"connect_timeout": 10},
+    })
+
+engine = create_engine(settings.DATABASE_URL, **_engine_kwargs)
 
 # ---------------------------------------------------------------------------
 # Session factory

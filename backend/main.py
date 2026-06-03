@@ -10,7 +10,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
-from app.database.connection import check_db_connection
+from app.database.connection import check_db_connection, engine
+from app.database.models import Base
 from app.api.v1 import campaigns, candidates, ai_core, interview
 
 
@@ -27,9 +28,14 @@ async def lifespan(app: FastAPI):
     print(f"[{settings.PROJECT_NAME}] Starting up...")
     db_ok = check_db_connection()
     if db_ok:
-        print("[DB] ✅ Connected to AWS RDS PostgreSQL successfully.")
+        print("[DB] OK - Connected successfully.")
     else:
-        print("[DB] ❌ WARNING: Could not connect to database. Check DATABASE_URL in .env")
+        print("[DB] WARNING: Could not connect to database. Check DATABASE_URL in .env")
+
+    # Auto-create tables for SQLite local dev (production uses Alembic migrations)
+    if settings.DATABASE_URL.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+        print("[DB] SQLite tables auto-created for local dev.")
 
     yield  # Server đang chạy, nhận request ở đây
 

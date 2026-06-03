@@ -9,10 +9,52 @@ from sqlalchemy import (
     Integer,
     Index,
     UniqueConstraint,
+    TypeDecorator,
+    JSON,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB as PG_JSONB
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
+
+
+# ---------------------------------------------------------------------------
+# Cross-database type helpers (PostgreSQL native <-> SQLite fallback)
+# ---------------------------------------------------------------------------
+class UUID(TypeDecorator):
+    """UUID column: native on PostgreSQL, CHAR(32) on SQLite."""
+    impl = String(32)
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=True))
+        return dialect.type_descriptor(String(32))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        if dialect.name == "postgresql":
+            return value
+        return str(value).replace("-", "")
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if not isinstance(value, uuid.UUID):
+            return uuid.UUID(value)
+        return value
+
+
+class JSONB(TypeDecorator):
+    """JSONB column: native on PostgreSQL, plain JSON on SQLite."""
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_JSONB())
+        return dialect.type_descriptor(JSON())
+
 
 Base = declarative_base()
 
@@ -23,7 +65,7 @@ class User(Base):
     """
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
@@ -42,9 +84,9 @@ class Campaign(Base):
     """
     __tablename__ = "campaigns"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(), primary_key=True, default=uuid.uuid4)
     created_by = Column(
-        UUID(as_uuid=True),
+        UUID(),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
@@ -87,9 +129,9 @@ class Candidate(Base):
     """
     __tablename__ = "candidates"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(), primary_key=True, default=uuid.uuid4)
     campaign_id = Column(
-        UUID(as_uuid=True),
+        UUID(),
         ForeignKey("campaigns.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -144,9 +186,9 @@ class AIEvaluation(Base):
     """
     __tablename__ = "ai_evaluations"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(), primary_key=True, default=uuid.uuid4)
     candidate_id = Column(
-        UUID(as_uuid=True),
+        UUID(),
         ForeignKey("candidates.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -180,9 +222,9 @@ class AssessmentQuestion(Base):
     """
     __tablename__ = "assessment_questions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(), primary_key=True, default=uuid.uuid4)
     campaign_id = Column(
-        UUID(as_uuid=True),
+        UUID(),
         ForeignKey("campaigns.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -210,9 +252,9 @@ class CandidateTest(Base):
     """
     __tablename__ = "candidate_tests"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(), primary_key=True, default=uuid.uuid4)
     candidate_id = Column(
-        UUID(as_uuid=True),
+        UUID(),
         ForeignKey("candidates.id", ondelete="CASCADE"),
         nullable=False,
     )
