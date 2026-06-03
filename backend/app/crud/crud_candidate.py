@@ -5,8 +5,9 @@ from app.schemas.candidates import CandidateCreate, CandidateUpdate, CandidateSt
 
 def get_candidate(db: Session, candidate_id: UUID):
     return db.query(Candidate).filter(Candidate.id == candidate_id).first()
+from typing import Optional
 
-def get_candidates(db: Session, campaign_id: UUID = None, skip: int = 0, limit: int = 100):
+def get_candidates(db: Session, campaign_id: Optional[UUID] = None, skip: int = 0, limit: int = 100):
     query = db.query(Candidate)
     if campaign_id:
         query = query.filter(Candidate.campaign_id == campaign_id)
