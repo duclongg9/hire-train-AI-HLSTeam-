@@ -1,9 +1,21 @@
-from config import settings
+import logging
+import asyncio
 
-def send_invitation_email(to_email: str, candidate_name: str, session_link: str):
+logger = logging.getLogger(__name__)
+
+async def send_email_async(to_email: str, subject: str, body: str) -> bool:
     """
-    Sends an invitation email to the candidate.
+    Dummy function to send an email asynchronously.
+    Currently just prints to the console/logger.
     """
-    # Placeholder for SMTP logic using 'emails' library or smtplib
-    print(f"Sending email to {to_email}: Welcome {candidate_name}. Join here: {session_link}")
+    logger.info(f"--- MOCK EMAIL SENDER ---")
+    logger.info(f"To: {to_email}")
+    logger.info(f"Subject: {subject}")
+    logger.info(f"Body: {body}")
+    logger.info(f"-------------------------")
+    
+    # Simulate async work
+    await asyncio.sleep(0.5)
+    
+    print(f"Email sent to {to_email} with subject: {subject}")
     return True
