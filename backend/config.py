@@ -1,10 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List, Union
-from pydantic import AnyHttpUrl, validator
+from typing import List
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "HireTrain AI"
     API_V1_STR: str = "/api/v1"
+    DEBUG: bool = False  # Bật True để log SQL queries khi phát triển local
     
     # Feature Flags
     ENABLE_VOICE_AI: bool = True

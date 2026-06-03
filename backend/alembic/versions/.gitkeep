@@ -1,0 +1,5 @@
+# Thư mục này chứa các file migration do Alembic tự động sinh ra.
+# Đừng sửa tay các file trong thư mục này.
+# Tạo migration mới: alembic revision --autogenerate -m "description"
+# Apply migration:   alembic upgrade head
+# Rollback:          alembic downgrade -1
