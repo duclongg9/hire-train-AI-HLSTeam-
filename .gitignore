@@ -37,3 +37,10 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.swp
+
+# Terraform
+.terraform/
+*.tfstate
+.terraform.lock.hcl
+*.tfstate.backup
+*.tfvars
