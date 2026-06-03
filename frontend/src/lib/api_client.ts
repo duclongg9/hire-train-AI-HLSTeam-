@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const BASE_URL = `${API_BASE}/api`;
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -39,6 +40,16 @@ export const campaignApi = {
 // ── Candidate APIs ───────────────────────────────────────────────────────────
 
 export const candidateApi = {
+  /** Upload JD file → AI returns rubric JSON */
+  analyzeJd: (campaignId: string, file: File) => {
+    const form = new FormData();
+    form.append('campaign_id', campaignId);
+    form.append('file', file);
+    return api.post('/campaigns/ai-core/jd/extract-rubric', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
   /** Upload ZIP → batch evaluate all CVs */
   batchEvaluate: (campaignId: string, zipFile: File) => {
     const form = new FormData();
@@ -57,10 +68,10 @@ export const candidateApi = {
 
 export const WS_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
   .replace(/^http/, 'ws')
-  .replace('/api/v1', '');
+  .replace('/api', '');
 
 export function createInterviewSocket(): WebSocket {
-  return new WebSocket(`${WS_BASE}/api/v1/interview/live`);
+  return new WebSocket(`${WS_BASE}/api/interview/live`);
 }
 
 export default api;

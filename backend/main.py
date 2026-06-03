@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config import settings
-from app.api.v1 import campaigns, candidates, ai_core, interview
 from app.api.routes import module1_router
 from app.core.errors import AppError
 from app.services.module1_service import get_module1_service
@@ -49,30 +48,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ---------------------------------------------------------------------------
-# API Routers
-# ---------------------------------------------------------------------------
-app.include_router(
-    campaigns.router,
-    prefix="/api/v1/campaigns",
-    tags=["Campaigns"],
-)
-app.include_router(
-    candidates.router,
-    prefix="/api/v1/candidates",
-    tags=["Candidates"],
-)
-app.include_router(
-    ai_core.router,
-    prefix="/api/v1/ai",
-    tags=["AI Core"],
-)
-app.include_router(
-    interview.router,
-    prefix="/api/v1/interview",
-    tags=["Virtual Interview"],
-)
 
 @app.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError):
@@ -123,4 +98,3 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level="debug" if settings.DEBUG else "info",
     )
-
