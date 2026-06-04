@@ -1,22 +1,77 @@
 import axios from 'axios';
 
-const api_client = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const BASE_URL = `${API_BASE}/api`;
+
+const api = axios.create({
+  baseURL: BASE_URL,
 });
 
-api_client.interceptors.request.use(
+// Attach JWT token from localStorage on every request
+api.interceptors.request.use(
   (config) => {
-    // Add JWT Token here if available from local storage or context
-    const token = typeof window !== "undefined" ? localStorage.getItem('token') : null;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-export default api_client;
+// ── Campaign APIs ────────────────────────────────────────────────────────────
+
+export const campaignApi = {
+  list: () => api.get('/campaigns/'),
+  get: (id: string) => api.get(`/campaigns/${id}`),
+  create: (data: { title: string; status?: string; deadline?: string }) =>
+    api.post('/campaigns/', data),
+  updateRubric: (id: string, rubric: Record<string, unknown>) =>
+    api.put(`/campaigns/${id}/rubric`, rubric),
+
+  /** Upload JD file → AI returns rubric JSON */
+  extractRubric: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post('/campaigns/ai-core/jd/extract-rubric', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};
+
+// ── Candidate APIs ───────────────────────────────────────────────────────────
+
+export const candidateApi = {
+  /** Upload JD file → AI returns rubric JSON */
+  analyzeJd: (campaignId: string, file: File) => {
+    const form = new FormData();
+    form.append('campaign_id', campaignId);
+    form.append('file', file);
+    return api.post('/campaigns/ai-core/jd/extract-rubric', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  /** Upload ZIP → batch evaluate all CVs */
+  batchEvaluate: (campaignId: string, zipFile: File) => {
+    const form = new FormData();
+    form.append('file', zipFile);
+    return api.post(`/campaigns/${campaignId}/batch-evaluate`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  /** Leaderboard for a campaign */
+  leaderboard: (campaignId: string, params?: { status?: string; min_score?: number }) =>
+    api.get(`/campaigns/${campaignId}/leaderboard`, { params }),
+};
+
+// ── WebSocket helper ─────────────────────────────────────────────────────────
+
+export const WS_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
+  .replace(/^http/, 'ws')
+  .replace('/api', '');
+
+export function createInterviewSocket(): WebSocket {
+  return new WebSocket(`${WS_BASE}/api/interview/live`);
+}
+
+export default api;

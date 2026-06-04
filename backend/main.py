@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
@@ -30,10 +30,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version="1.0.0",
-    description="Backend API for HireTrain AI Module 1 recruitment workflow.",
+    description=(
+        "Backend API for HireTrain AI — Intelligent Recruitment Platform "
+        "using AWS AI Services, WebRTC Voice Interview, and AWS S3."
+    ),
     openapi_url="/api/openapi.json",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
     lifespan=lifespan,
 )
 
@@ -95,4 +98,3 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         log_level="debug" if settings.DEBUG else "info",
     )
-

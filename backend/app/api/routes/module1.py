@@ -1,8 +1,14 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends
+import io
+import zipfile
+import pdfplumber
+import asyncio
+import websockets
+import json
+from fastapi import APIRouter, Body, Depends, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect
 
 from app.schemas.module1 import (
     BulkCandidateScoreRequest,
@@ -24,12 +30,76 @@ from app.schemas.module1 import (
     UserCreate,
 )
 from app.services.module1_service import Module1Service, get_module1_service
+from app.core.errors import AppError
 
 router = APIRouter()
 
 
 def service_dep() -> Module1Service:
     return get_module1_service()
+
+
+def process_cv_batch_task(campaign_id: UUID, file_content: bytes, service: Module1Service):
+    try:
+        candidate_ids = []
+        with zipfile.ZipFile(io.BytesIO(file_content)) as z:
+            for file_info in z.infolist():
+                if file_info.filename.endswith(".pdf") and not file_info.filename.startswith("__MACOSX"):
+                    try:
+                        with z.open(file_info) as f:
+                            pdf_content = f.read()
+                        
+                        text = ""
+                        with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
+                            for page in pdf.pages:
+                                page_text = page.extract_text()
+                                if page_text:
+                                    text += page_text + "\n"
+                        
+                        # Use file name without extension as full_name for now
+                        name = file_info.filename.split("/")[-1].replace(".pdf", "")
+                        # Dummy email for batch
+                        email = f"{name.lower().replace(' ', '.')}@example.com"
+                        
+                        candidate = service.apply_candidate(
+                            campaign_id,
+                            CandidateApplyRequest(
+                                full_name=name,
+                                email=email,
+                                cv_text=text,
+                                cv_file_name=file_info.filename
+                            )
+                        )
+                        candidate_ids.append(candidate.id)
+                    except Exception as e:
+                        print(f"Failed to process {file_info.filename}: {e}")
+        
+        # Once all candidates are applied, bulk score them
+        if candidate_ids:
+            service.bulk_score_candidates(campaign_id, candidate_ids)
+    except Exception as e:
+        print(f"Batch CV processing failed: {e}")
+
+
+@router.post("/campaigns/{campaign_id}/batch-evaluate")
+def batch_evaluate(
+    campaign_id: UUID,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    service: Module1Service = Depends(service_dep),
+):
+    if not file.filename.endswith(".zip"):
+        raise AppError(400, "Only ZIP files are supported.")
+    
+    # Check if rubric exists before processing
+    service._rubric_or_error(campaign_id)
+    
+    try:
+        content = file.file.read()
+        background_tasks.add_task(process_cv_batch_task, campaign_id, content, service)
+        return {"message": "Batch evaluation started in the background."}
+    except Exception as e:
+        raise AppError(500, f"Failed to start batch evaluation: {str(e)}")
 
 
 @router.post("/auth/mock-login")
@@ -75,6 +145,33 @@ def update_campaign(campaign_id: UUID, payload: CampaignUpdate, service: Module1
 @router.post("/campaigns/{campaign_id}/analyze-jd")
 def analyze_jd(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
     return service.analyze_jd(campaign_id)
+
+
+@router.post("/campaigns/ai-core/jd/extract-rubric")
+def extract_rubric(
+    campaign_id: UUID = Body(...),
+    file: UploadFile = File(...),
+    service: Module1Service = Depends(service_dep),
+):
+    if not file.filename.endswith(".pdf"):
+        raise AppError(400, "Only PDF files are supported.")
+        
+    try:
+        content = file.file.read()
+        text = ""
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        
+        # Update JD text in campaign
+        service.update_campaign(campaign_id, CampaignUpdate(jd_text=text))
+        
+        # Analyze JD and return Rubric
+        return service.analyze_jd(campaign_id)
+    except Exception as e:
+        raise AppError(500, f"Error processing JD PDF: {str(e)}")
 
 
 @router.put("/campaigns/{campaign_id}/rubric")
@@ -238,3 +335,98 @@ def bulk_email(campaign_id: UUID, payload: BulkEmailRequest, service: Module1Ser
 @router.get("/emails")
 def list_email_events(campaign_id: UUID | None = None, service: Module1Service = Depends(service_dep)):
     return service.list_email_events(campaign_id)
+
+
+@router.websocket("/interview/live")
+async def websocket_proxy(websocket: WebSocket):
+    from config import settings
+    await websocket.accept()
+
+    try:
+        # Nhận tin nhắn đầu tiên chứa token và role từ client
+        init_msg = await websocket.receive_text()
+        init_data = json.loads(init_msg)
+        token = init_data.get("token")
+        
+        # Verify token using Module1Service
+        service = get_module1_service()
+        try:
+            invitation = service._valid_interview_invitation(token)
+            # Update session status via service
+            # service.start_interview(token) could be called here if needed
+        except Exception as e:
+            await websocket.close(code=4003, reason=str(e))
+            return
+
+        print(f"[WebSocket] Client connected with valid token for candidate {invitation.candidate_id}")
+        
+        gemini_api_key = settings.GEMINI_LIVE_API_KEY
+        if not gemini_api_key:
+            gemini_api_key = settings.GEMINI_API_KEY # fallback
+        if not gemini_api_key:
+            await websocket.close(code=1011, reason="Missing GEMINI_API_KEY on server")
+            return
+
+        model = "models/gemini-2.0-flash-exp"
+        gemini_ws_url = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={gemini_api_key}"
+
+        print(f"[WebSocket] Connecting to Gemini API ({model})...")
+        async with websockets.connect(gemini_ws_url, extra_headers={"User-Agent": "FastAPI-Proxy"}) as gemini_ws:
+            print("[WebSocket] Connected to Gemini. Starting bidi proxy...")
+
+            # Khởi tạo session (setup) với Gemini
+            setup_msg = {
+                "setup": {
+                    "model": model,
+                    "generationConfig": {
+                        "responseModalities": ["AUDIO"],
+                        "speechConfig": {
+                            "voiceConfig": {
+                                "prebuiltVoiceConfig": {
+                                    "voiceName": "Puck",
+                                }
+                            }
+                        }
+                    },
+                    "systemInstruction": {
+                        "parts": [
+                            {"text": "You are a professional HR recruiter named Sarah. Ask 3 brief interview questions to the candidate."}
+                        ]
+                    }
+                }
+            }
+            await gemini_ws.send(json.dumps(setup_msg))
+
+            # Task 1: Client -> Proxy -> Gemini
+            async def client_to_gemini():
+                try:
+                    while True:
+                        msg = await websocket.receive_text()
+                        await gemini_ws.send(msg)
+                except WebSocketDisconnect:
+                    print("[WebSocket] Client disconnected.")
+                except Exception as e:
+                    print(f"[WebSocket] client_to_gemini error: {e}")
+
+            # Task 2: Gemini -> Proxy -> Client
+            async def gemini_to_client():
+                try:
+                    async for msg in gemini_ws:
+                        await websocket.send_text(msg)
+                except Exception as e:
+                    print(f"[WebSocket] gemini_to_client error: {e}")
+
+            # Chạy đồng thời 2 task
+            await asyncio.gather(
+                client_to_gemini(),
+                gemini_to_client()
+            )
+
+    except WebSocketDisconnect:
+        print("[WebSocket] Client disconnected early.")
+    except Exception as e:
+        print(f"[WebSocket] Unexpected error: {e}")
+        try:
+            await websocket.close(code=1011, reason="Internal server error")
+        except:
+            pass

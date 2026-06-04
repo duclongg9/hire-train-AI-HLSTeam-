@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Literal
 
@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     AI_PROVIDER: Literal["mock", "gemini"] = "mock"
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    
+    # Feature Flags
+    ENABLE_VOICE_AI: bool = True
+    MOCK_MODE: bool = False
 
     INTERVIEW_PROVIDER: Literal["mock", "gemini_live"] = "mock"
     GEMINI_LIVE_API_KEY: str = ""
@@ -35,6 +39,12 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
+
+    # AWS Configuration
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "ap-southeast-1"
+    AWS_S3_BUCKET_NAME: str = "hiretrain-cv-bucket"
 
     TOKEN_SECRET: str = "development-token-secret-change-me"
     CANDIDATE_LINK_TTL_HOURS: int = Field(default=72, ge=1, le=720)
