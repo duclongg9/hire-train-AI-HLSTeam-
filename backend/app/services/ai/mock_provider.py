@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any
 
@@ -151,3 +151,21 @@ class MockAIProvider(AIProvider):
         if decision == "PASSED":
             return f"Dear {candidate.full_name}, congratulations. Your application has progressed successfully, and our HR team will contact you with next steps."
         return f"Dear {candidate.full_name}, thank you for taking part in the process. We will not move forward at this time, but we appreciate your effort and interest."
+
+    def extract_candidate_info(self, cv_text: str) -> dict[str, str | None]:
+        # Simple mock regex extraction
+        import re
+        email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', cv_text)
+        phone_match = re.search(r'\+?\d[\d -]{8,12}\d', cv_text)
+        
+        # Simple name heuristic: first line or default
+        lines = [l.strip() for l in cv_text.split('\n') if l.strip()]
+        name = lines[0] if lines else "Mock Candidate"
+        if len(name) > 50 or "@" in name or any(char.isdigit() for char in name):
+            name = "Mock Candidate"
+
+        return {
+            "full_name": name,
+            "email": email_match.group(0) if email_match else "mock.candidate@example.com",
+            "phone": phone_match.group(0) if phone_match else "0987654321",
+        }

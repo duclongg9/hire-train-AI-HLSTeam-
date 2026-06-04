@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { createInterviewSocket } from "@/lib/api_client";
+import { createInterviewSocket, campaignApi, candidateApi } from "@/lib/api_client";
 
 type Sentiment = "neutral" | "positive" | "nervous" | "confident";
 
@@ -24,8 +24,25 @@ export default function CandidatePortal() {
   const [wsBars, setWsBars] = useState<number[]>(Array(24).fill(4));
   const [connected, setConnected] = useState(false);
   const [cvFile, setCvFile] = useState<File | null>(null);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState("");
+  const [extractedInfo, setExtractedInfo] = useState<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const animRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    campaignApi.list().then(res => {
+      // Show active campaigns or all
+      setCampaigns(res.data);
+      if (res.data.length > 0) {
+        setSelectedCampaignId(res.data[0].id);
+      }
+    }).catch(err => {
+      console.error("Failed to load campaigns", err);
+    });
+  }, []);
 
   // Animate visualizer bars
   useEffect(() => {
@@ -40,6 +57,25 @@ export default function CandidatePortal() {
     animRef.current = requestAnimationFrame(tick);
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [step, connected]);
+
+  const handleUpload = async () => {
+    if (!cvFile || !selectedCampaignId) {
+      setError("Please select a campaign and choose a CV file first.");
+      return;
+    }
+    setApplying(true);
+    setError("");
+    setExtractedInfo(null);
+    try {
+      const res = await candidateApi.applyFile(selectedCampaignId, cvFile);
+      setExtractedInfo(res.data);
+      setStep("waiting");
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to submit CV file. Ensure DB is populated.");
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const enterInterview = () => {
     setStep("interview");
@@ -93,6 +129,36 @@ export default function CandidatePortal() {
 
             <div className="glass-card" style={{ padding: "32px", marginBottom: "20px" }}>
               <h2 style={{ fontWeight: 700, marginBottom: "20px", fontSize: "1rem" }}>1. Submit Your CV</h2>
+              
+              {/* Campaign Dropdown */}
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ display: "block", fontWeight: 600, marginBottom: "8px", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                  Select Recruitment Campaign / Position
+                </label>
+                <select
+                  value={selectedCampaignId}
+                  onChange={e => setSelectedCampaignId(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "8px",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  <option value="" style={{ background: "#1c1c24" }}>-- Select a Position --</option>
+                  {campaigns.map(c => (
+                    <option key={c.id} value={c.id} style={{ background: "#1c1c24" }}>
+                      {c.title} ({c.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Upload Zone */}
               <div
                 id="cv-upload-zone"
                 className="upload-zone"
@@ -107,14 +173,21 @@ export default function CandidatePortal() {
                 <input id="cv-input" type="file" accept=".pdf,.docx" style={{ display: "none" }}
                   onChange={e => setCvFile(e.target.files?.[0] ?? null)} />
               </div>
+
+              {error && (
+                <div style={{ color: "#ef4444", fontSize: "0.85rem", marginBottom: "16px", fontWeight: 500 }}>
+                  ❌ {error}
+                </div>
+              )}
+
               <button
                 id="btn-upload-cv"
                 className="btn-primary"
-                style={{ width: "100%" }}
-                disabled={!cvFile}
-                onClick={() => setStep("waiting")}
+                style={{ width: "100%", opacity: applying ? 0.7 : 1 }}
+                disabled={!cvFile || !selectedCampaignId || applying}
+                onClick={handleUpload}
               >
-                Upload & Submit
+                {applying ? "Parsing CV via Gemini..." : "Upload & Submit"}
               </button>
             </div>
           </div>
@@ -128,9 +201,33 @@ export default function CandidatePortal() {
               <h2 style={{ fontWeight: 700, fontSize: "1.3rem", marginBottom: "12px" }}>
                 CV Received!
               </h2>
-              <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "32px" }}>
+              <p style={{ color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "24px" }}>
                 Our AI is reviewing your resume. You will be notified when your interview session is ready.
               </p>
+
+              {extractedInfo && (
+                <div style={{
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  borderRadius: "10px",
+                  padding: "20px",
+                  marginBottom: "28px",
+                  textAlign: "left",
+                }}>
+                  <h3 style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: "12px", color: "var(--accent-cyan)", display: "flex", alignItems: "center", gap: "8px" }}>
+                    ✨ AI-Parsed Candidate Information:
+                  </h3>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                    <div><strong style={{ color: "var(--text-primary)" }}>Full Name:</strong> {extractedInfo.full_name || "N/A"}</div>
+                    <div><strong style={{ color: "var(--text-primary)" }}>Email:</strong> {extractedInfo.email || "N/A"}</div>
+                    <div><strong style={{ color: "var(--text-primary)" }}>Phone:</strong> {extractedInfo.phone || "N/A"}</div>
+                  </div>
+                  <div style={{ marginTop: "12px", fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                    ✓ This info was parsed directly from the CV file text using Gemini.
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginBottom: "32px" }}>
                 {["Uploaded", "AI Screening", "Interview"].map((s, i) => (
                   <div key={s} style={{ display: "flex", alignItems: "center", gap: "8px" }}>

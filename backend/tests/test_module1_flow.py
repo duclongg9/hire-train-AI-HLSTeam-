@@ -1,4 +1,4 @@
-﻿import os
+import os
 
 os.environ.update(
     {
@@ -134,4 +134,17 @@ def test_module1_demo_flow():
         )
         assert sent.status_code == 200
         assert sent.json()["updated_candidate_count"] == 1
+
+        # Test applying with file upload
+        from unittest.mock import patch
+        with patch("app.core.document_parser.extract_text_from_pdf", return_value="John Doe\ntest.candidate@example.com\n0987654321\nSome cv text"):
+            applied_file = client.post(
+                f"/api/public/jobs/{campaign_id}/apply-file",
+                files={"file": ("test_candidate.pdf", b"dummy pdf content", "application/pdf")}
+            )
+            assert applied_file.status_code == 201
+            data = applied_file.json()
+            assert data["full_name"] == "John Doe"
+            assert data["email"] == "test.candidate@example.com"
+            assert data["phone"] == "0987654321"
 

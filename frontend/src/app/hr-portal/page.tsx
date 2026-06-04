@@ -18,7 +18,7 @@ type Candidate = {
   status: string;
 };
 
-type Tab = "campaigns" | "leaderboard" | "upload";
+type Tab = "campaigns" | "leaderboard" | "upload" | "campaign_details";
 
 export default function HRPortalDashboard() {
   const [tab, setTab] = useState<Tab>("campaigns");
@@ -30,6 +30,16 @@ export default function HRPortalDashboard() {
   const [batchFile, setBatchFile] = useState<File | null>(null);
   const [batchStatus, setBatchStatus] = useState<string>("");
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
+
+  // New state variables for testing flow
+  const [campaignCandidates, setCampaignCandidates] = useState<any[]>([]);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [rubric, setRubric] = useState<any[]>([]);
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const [jdStatus, setJdStatus] = useState("");
+  const [scoringStatus, setScoringStatus] = useState("");
+  const [selectedCandidateScoreDetail, setSelectedCandidateScoreDetail] = useState<any | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
     setToast({ msg, type });
@@ -48,6 +58,32 @@ export default function HRPortalDashboard() {
     }
   }, []);
 
+  const selectCampaignDetails = async (campaign: Campaign) => {
+    setActiveCampaign(campaign);
+    setLoading(true);
+    setJdFile(null);
+    setJdStatus("");
+    setScoringStatus("");
+    setSelectedCandidateIds([]);
+    setSelectedCandidateScoreDetail(null);
+    try {
+      // 1. Get campaign's rubric
+      const rubricRes = await campaignApi.getRubric(campaign.id);
+      setRubric(rubricRes.data || []);
+      
+      // 2. Load candidate list
+      const candRes = await candidateApi.list(campaign.id);
+      setCampaignCandidates(candRes.data || []);
+      
+      setTab("campaign_details");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to load campaign details", "err");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadLeaderboard = useCallback(async (campaign: Campaign) => {
     setActiveCampaign(campaign);
     setLoading(true);
@@ -61,6 +97,71 @@ export default function HRPortalDashboard() {
       setLoading(false);
     }
   }, []);
+
+  // Upload JD PDF/Word to parse and generate Rubric
+  const uploadJd = async () => {
+    if (!activeCampaign || !jdFile) return;
+    setJdStatus("Analyzing Job Description via Gemini...");
+    try {
+      const res = await campaignApi.extractRubric(activeCampaign.id, jdFile);
+      setRubric(res.data || []);
+      setJdStatus("✓ Rubric generated successfully!");
+      showToast("Rubric generated ✓");
+      
+      // Refresh campaign object to update rubric state
+      const campRes = await campaignApi.get(activeCampaign.id);
+      setActiveCampaign(campRes.data);
+    } catch (err: any) {
+      console.error(err);
+      setJdStatus("");
+      showToast(err.response?.data?.detail || "JD upload failed", "err");
+    }
+  };
+
+  // Score candidate(s) (single or bulk selection)
+  const scoreCandidates = async (candidateId?: string) => {
+    if (!activeCampaign) return;
+    const targetIds = candidateId ? [candidateId] : selectedCandidateIds;
+    if (targetIds.length === 0) {
+      showToast("Please select at least one candidate", "err");
+      return;
+    }
+    
+    setScoringStatus(`Scoring ${targetIds.length} candidate(s)...`);
+    try {
+      if (targetIds.length === 1) {
+        await candidateApi.score(activeCampaign.id, targetIds[0]);
+      } else {
+        await candidateApi.bulkScore(activeCampaign.id, targetIds);
+      }
+      setScoringStatus("✓ Scoring completed!");
+      showToast("Scoring completed ✓");
+      setSelectedCandidateIds([]);
+      
+      // Refresh candidates list
+      const candRes = await candidateApi.list(activeCampaign.id);
+      setCampaignCandidates(candRes.data || []);
+    } catch (err: any) {
+      console.error(err);
+      setScoringStatus("");
+      showToast(err.response?.data?.detail || "Scoring failed", "err");
+    }
+  };
+
+  // View detailed score breakdown for a scored candidate
+  const viewCandidateScoreDetail = async (candidateId: string) => {
+    setDetailLoading(true);
+    setSelectedCandidateScoreDetail(null);
+    try {
+      const res = await candidateApi.finalReview(candidateId);
+      setSelectedCandidateScoreDetail(res.data);
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to load candidate score breakdown", "err");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   const createCampaign = async () => {
     if (!newTitle.trim()) return;
@@ -117,7 +218,7 @@ export default function HRPortalDashboard() {
           <div
             key={item.key}
             id={`nav-${item.key}`}
-            className={`sidebar-nav-item ${tab === item.key ? "active" : ""}`}
+            className={`sidebar-nav-item ${(tab === item.key || (item.key === "campaigns" && tab === "campaign_details")) ? "active" : ""}`}
             onClick={() => { setTab(item.key as Tab); if (item.key === "campaigns") loadCampaigns(); }}
           >
             <span>{item.icon}</span>
@@ -199,7 +300,12 @@ export default function HRPortalDashboard() {
                   <tbody>
                     {campaigns.map(c => (
                       <tr key={c.id}>
-                        <td style={{ fontWeight: 600 }}>{c.title}</td>
+                        <td
+                          style={{ fontWeight: 600, cursor: "pointer", color: "var(--accent-cyan)" }}
+                          onClick={() => selectCampaignDetails(c)}
+                        >
+                          {c.title}
+                        </td>
                         <td><span className={`badge ${getStatusBadge(c.status)}`}>{c.status}</span></td>
                         <td>
                           {c.rubric_schema
@@ -207,6 +313,14 @@ export default function HRPortalDashboard() {
                             : <span className="badge badge-gray">Not set</span>}
                         </td>
                         <td style={{ display: "flex", gap: "8px" }}>
+                          <button
+                            id={`btn-manage-${c.id}`}
+                            className="btn-primary"
+                            style={{ padding: "6px 14px", fontSize: "0.8rem", background: "rgba(99,102,241,0.2)", border: "1px solid var(--accent-purple)", color: "var(--text-primary)" }}
+                            onClick={() => selectCampaignDetails(c)}
+                          >
+                            ⚙ Manage Details
+                          </button>
                           <button
                             id={`btn-leaderboard-${c.id}`}
                             className="btn-ghost"
@@ -230,6 +344,360 @@ export default function HRPortalDashboard() {
                 </table>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── TAB: Campaign Details & Testing ────────────────────── */}
+        {tab === "campaign_details" && activeCampaign && (
+          <div className="animate-fade-in">
+            {/* Back button and title */}
+            <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
+              <button
+                className="btn-ghost"
+                onClick={() => { setTab("campaigns"); loadCampaigns(); }}
+                style={{ padding: "8px 16px", fontSize: "0.9rem" }}
+              >
+                ← Back
+              </button>
+              <div>
+                <h1 style={{ fontSize: "1.6rem", fontWeight: 800, letterSpacing: "-0.03em" }}>
+                  {activeCampaign.title}
+                </h1>
+                <span className={`badge ${getStatusBadge(activeCampaign.status)}`}>
+                  {activeCampaign.status}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+              {/* ── LEFT COLUMN: JD & Rubric ── */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                {/* JD PDF/Word Upload */}
+                <div className="glass-card" style={{ padding: "24px" }}>
+                  <h2 style={{ fontWeight: 700, fontSize: "1.1rem", marginBottom: "12px" }}>
+                    1. Job Description & Rubric Criteria
+                  </h2>
+                  <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: "20px" }}>
+                    Upload JD (PDF/Word) to automatically extract scoring rubric criteria using Gemini.
+                  </p>
+
+                  <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px" }}>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.doc"
+                      id="jd-file-input"
+                      onChange={e => setJdFile(e.target.files?.[0] ?? null)}
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      className="btn-ghost"
+                      onClick={() => document.getElementById("jd-file-input")?.click()}
+                      style={{ flex: 1, padding: "10px" }}
+                    >
+                      📁 {jdFile ? jdFile.name : "Choose JD File"}
+                    </button>
+                    <button
+                      className="btn-primary"
+                      onClick={uploadJd}
+                      disabled={!jdFile}
+                    >
+                      Upload JD
+                    </button>
+                  </div>
+
+                  {jdStatus && (
+                    <div style={{
+                      padding: "10px 14px",
+                      borderRadius: "6px",
+                      background: "rgba(16,185,129,0.1)",
+                      border: "1px solid rgba(16,185,129,0.3)",
+                      color: "#10b981",
+                      fontSize: "0.8rem",
+                      fontWeight: 600,
+                      marginBottom: "16px",
+                    }}>
+                      {jdStatus}
+                    </div>
+                  )}
+
+                  {/* Rubric Criteria List */}
+                  <h3 style={{ fontWeight: 600, fontSize: "0.95rem", marginBottom: "12px", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "6px" }}>
+                    Current Rubric Criteria
+                  </h3>
+                  {rubric.length === 0 ? (
+                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontStyle: "italic" }}>
+                      No criteria set. Upload a JD file above to generate criteria.
+                    </p>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "350px", overflowY: "auto" }}>
+                      {rubric.map((crit, idx) => (
+                        <div key={crit.id || idx} style={{
+                          background: "rgba(255,255,255,0.02)",
+                          border: "1px solid rgba(255,255,255,0.06)",
+                          borderRadius: "8px",
+                          padding: "12px",
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                            <strong style={{ fontSize: "0.85rem" }}>{crit.name}</strong>
+                            <span className="badge badge-blue" style={{ fontSize: "0.75rem" }}>
+                              {crit.weight}%
+                            </span>
+                          </div>
+                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "capitalize" }}>
+                            Category: {String(crit.category).replace("_", " ")}
+                          </span>
+                          <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: "4px" }}>
+                            {crit.description}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── RIGHT COLUMN: Candidates & Scoring ── */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                <div className="glass-card" style={{ padding: "24px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                    <h2 style={{ fontWeight: 700, fontSize: "1.1rem" }}>
+                      2. Candidates & CV Evaluation
+                    </h2>
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                      {campaignCandidates.length} candidate(s)
+                    </span>
+                  </div>
+
+                  {/* Actions bar */}
+                  <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
+                    <button
+                      className="btn-primary"
+                      onClick={() => scoreCandidates()}
+                      disabled={selectedCandidateIds.length === 0}
+                      style={{ flex: 1 }}
+                    >
+                      🚀 Score Selected ({selectedCandidateIds.length})
+                    </button>
+                  </div>
+
+                  {scoringStatus && (
+                    <div style={{
+                      padding: "10px 14px",
+                      borderRadius: "6px",
+                      background: "rgba(99,102,241,0.1)",
+                      border: "1px solid rgba(99,102,241,0.3)",
+                      color: "var(--accent-purple)",
+                      fontSize: "0.8rem",
+                      fontWeight: 600,
+                      marginBottom: "16px",
+                    }}>
+                      {scoringStatus}
+                    </div>
+                  )}
+
+                  {/* Candidate List Table */}
+                  <div style={{ overflowX: "auto" }}>
+                    {campaignCandidates.length === 0 ? (
+                      <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontStyle: "italic", textAlign: "center", padding: "30px" }}>
+                        No candidates have applied yet. Go to candidate portal to upload CV.
+                      </p>
+                    ) : (
+                      <table className="data-table" style={{ fontSize: "0.85rem" }}>
+                        <thead>
+                          <tr>
+                            <th style={{ width: "36px" }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedCandidateIds.length === campaignCandidates.length && campaignCandidates.length > 0}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setSelectedCandidateIds(campaignCandidates.map(c => c.id));
+                                  } else {
+                                    setSelectedCandidateIds([]);
+                                  }
+                                }}
+                              />
+                            </th>
+                            <th>Candidate</th>
+                            <th>Status</th>
+                            <th>Score</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {campaignCandidates.map(cand => (
+                            <tr key={cand.id}>
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCandidateIds.includes(cand.id)}
+                                  onChange={e => {
+                                    if (e.target.checked) {
+                                      setSelectedCandidateIds(prev => [...prev, cand.id]);
+                                    } else {
+                                      setSelectedCandidateIds(prev => prev.filter(id => id !== cand.id));
+                                    }
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <div><strong>{cand.full_name}</strong></div>
+                                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{cand.email}</div>
+                                {cand.phone && <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>📞 {cand.phone}</div>}
+                              </td>
+                              <td>
+                                <span className={`badge ${getStatusBadge(cand.status)}`} style={{ fontSize: "0.75rem" }}>
+                                  {cand.status}
+                                </span>
+                              </td>
+                              <td>
+                                {cand.status === "CV_SCORED" || cand.status === "PASSED" || cand.status === "REJECTED" ? (
+                                  <span style={{ fontWeight: 700, color: "var(--accent-cyan)" }}>
+                                    Scored
+                                  </span>
+                                ) : (
+                                  <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+                                    Not scored
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                  <button
+                                    className="btn-ghost"
+                                    style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+                                    onClick={() => scoreCandidates(cand.id)}
+                                  >
+                                    ⚡ Score CV
+                                  </button>
+                                  {(cand.status === "CV_SCORED" || cand.status === "PASSED" || cand.status === "REJECTED") && (
+                                    <button
+                                      className="btn-primary"
+                                      style={{ padding: "4px 8px", fontSize: "0.75rem", background: "rgba(6,182,212,0.15)", color: "var(--accent-cyan)", border: "1px solid rgba(6,182,212,0.3)" }}
+                                      onClick={() => viewCandidateScoreDetail(cand.id)}
+                                    >
+                                      🔍 View Score
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── CANDIDATE SCORE BREAKDOWN MODAL ── */}
+            {selectedCandidateScoreDetail && (
+              <div style={{
+                position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                background: "rgba(0,0,0,0.8)", zIndex: 1000,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "24px",
+              }}>
+                <div className="glass-card" style={{
+                  width: "100%", maxWidth: "800px", maxHeight: "90vh",
+                  overflowY: "auto", padding: "28px", display: "flex", flexDirection: "column", gap: "20px"
+                }}>
+                  {/* Modal Header */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "12px" }}>
+                    <div>
+                      <h2 style={{ fontSize: "1.3rem", fontWeight: 800 }}>
+                        Score Breakdown: {selectedCandidateScoreDetail.candidate?.full_name}
+                      </h2>
+                      <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginTop: "2px" }}>
+                        Email: {selectedCandidateScoreDetail.candidate?.email}
+                      </p>
+                    </div>
+                    <button
+                      className="btn-ghost"
+                      onClick={() => setSelectedCandidateScoreDetail(null)}
+                      style={{ fontSize: "1.2rem", padding: "4px 12px" }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Overall score ring */}
+                  <div style={{ display: "flex", gap: "24px", alignItems: "center", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "12px", padding: "20px" }}>
+                    <div style={{
+                      width: "80px", height: "80px", borderRadius: "50%",
+                      border: "4px solid var(--accent-cyan)", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      fontSize: "1.6rem", fontWeight: 800, color: "var(--accent-cyan)"
+                    }}>
+                      {selectedCandidateScoreDetail.cv_score?.score || 0}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                        <span className="badge badge-green" style={{ fontSize: "0.8rem" }}>
+                          Badge: {selectedCandidateScoreDetail.cv_score?.badge || "GAP"}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                        <strong>AI Reasoning summary:</strong> {selectedCandidateScoreDetail.cv_score?.ai_reasoning || "N/A"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Rubric Criteria score list */}
+                  <h3 style={{ fontWeight: 700, fontSize: "1rem" }}>
+                    Evaluation per Criterion (RAG-based)
+                  </h3>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                    {Object.entries(selectedCandidateScoreDetail.cv_score?.score_breakdown || {}).map(([critName, data]: [string, any], idx) => (
+                      <div key={idx} style={{
+                        background: "rgba(255,255,255,0.02)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: "10px",
+                        padding: "16px",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                          <strong style={{ fontSize: "0.9rem", color: "var(--text-primary)" }}>{critName}</strong>
+                          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+                              Weight: {data.weight}%
+                            </span>
+                            <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--accent-green)" }}>
+                              {data.raw_score !== undefined ? `${data.raw_score}/10` : (data.score !== undefined ? `${data.score}/10` : "N/A")}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.8rem" }}>
+                          {data.evidence && (
+                            <div style={{ background: "rgba(6,182,212,0.04)", borderLeft: "3px solid var(--accent-cyan)", padding: "8px 12px", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                              <strong>Evidence Quote:</strong> "{data.evidence}"
+                            </div>
+                          )}
+                          {data.reasoning && (
+                            <div style={{ color: "var(--text-muted)" }}>
+                              <strong>Reasoning:</strong> {data.reasoning}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: "12px", display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      className="btn-primary"
+                      onClick={() => setSelectedCandidateScoreDetail(null)}
+                      style={{ padding: "8px 24px" }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
