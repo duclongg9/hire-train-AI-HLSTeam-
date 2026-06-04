@@ -164,7 +164,10 @@ export default function HRPortalDashboard() {
   };
 
   const createCampaign = async () => {
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim()) {
+      showToast("Vui lòng nhập tên chiến dịch trước khi tạo", "err");
+      return;
+    }
     try {
       await campaignApi.create({ title: newTitle, status: "DRAFT" });
       setNewTitle("");
