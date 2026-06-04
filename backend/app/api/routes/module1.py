@@ -40,39 +40,62 @@ def service_dep() -> Module1Service:
 
 
 def process_cv_batch_task(campaign_id: UUID, file_content: bytes, service: Module1Service):
+    from app.core.document_parser import extract_text_from_pdf, extract_text_from_docx
+    import re
     try:
         candidate_ids = []
         with zipfile.ZipFile(io.BytesIO(file_content)) as z:
             for file_info in z.infolist():
-                if file_info.filename.endswith(".pdf") and not file_info.filename.startswith("__MACOSX"):
-                    try:
-                        with z.open(file_info) as f:
-                            pdf_content = f.read()
+                filename = file_info.filename
+                if filename.startswith("__MACOSX") or file_info.is_dir():
+                    continue
+                    
+                ext = filename.split(".")[-1].lower()
+                if ext not in ("pdf", "docx", "doc"):
+                    continue
+                    
+                try:
+                    with z.open(file_info) as f:
+                        file_bytes = f.read()
+                    
+                    if ext == "pdf":
+                        text = extract_text_from_pdf(file_bytes)
+                    else:
+                        text = extract_text_from_docx(file_bytes)
                         
-                        text = ""
-                        with pdfplumber.open(io.BytesIO(pdf_content)) as pdf:
-                            for page in pdf.pages:
-                                page_text = page.extract_text()
-                                if page_text:
-                                    text += page_text + "\n"
-                        
-                        # Use file name without extension as full_name for now
-                        name = file_info.filename.split("/")[-1].replace(".pdf", "")
-                        # Dummy email for batch
-                        email = f"{name.lower().replace(' ', '.')}@example.com"
-                        
-                        candidate = service.apply_candidate(
-                            campaign_id,
-                            CandidateApplyRequest(
-                                full_name=name,
-                                email=email,
-                                cv_text=text,
-                                cv_file_name=file_info.filename
-                            )
+                    if not text.strip():
+                        print(f"Skipping empty or unscannable file: {filename}")
+                        continue
+                    
+                    # Extract contact info via Gemini
+                    info = service.ai.extract_candidate_info(text)
+                    
+                    fallback_name = filename.split("/")[-1].replace(f".{ext}", "")
+                    name = info.get("full_name") or fallback_name
+                    email = info.get("email")
+                    phone = info.get("phone")
+                    
+                    # Fallback regex email
+                    if not email:
+                        email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
+                        if email_match:
+                            email = email_match.group(0)
+                        else:
+                            email = f"{name.lower().replace(' ', '.')}@example.com"
+                            
+                    candidate = service.apply_candidate(
+                        campaign_id,
+                        CandidateApplyRequest(
+                            full_name=name,
+                            email=email,
+                            phone=phone,
+                            cv_text=text,
+                            cv_file_name=filename
                         )
-                        candidate_ids.append(candidate.id)
-                    except Exception as e:
-                        print(f"Failed to process {file_info.filename}: {e}")
+                    )
+                    candidate_ids.append(candidate.id)
+                except Exception as e:
+                    print(f"Failed to process {filename}: {e}")
         
         # Once all candidates are applied, bulk score them
         if candidate_ids:
@@ -153,25 +176,35 @@ def extract_rubric(
     file: UploadFile = File(...),
     service: Module1Service = Depends(service_dep),
 ):
-    if not file.filename.endswith(".pdf"):
-        raise AppError(400, "Only PDF files are supported.")
+    from app.core.document_parser import extract_text_from_pdf, extract_text_from_docx
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in ("pdf", "docx", "doc"):
+        raise AppError(400, "Only PDF and DOCX files are supported.")
         
     try:
         content = file.file.read()
-        text = ""
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
+        if ext == "pdf":
+            text = extract_text_from_pdf(content)
+        else:
+            text = extract_text_from_docx(content)
+            
+        if not text.strip():
+            raise AppError(400, "Could not extract text from the JD file.")
         
         # Update JD text in campaign
         service.update_campaign(campaign_id, CampaignUpdate(jd_text=text))
         
         # Analyze JD and return Rubric
         return service.analyze_jd(campaign_id)
+    except AppError as e:
+        raise e
     except Exception as e:
-        raise AppError(500, f"Error processing JD PDF: {str(e)}")
+        raise AppError(500, f"Error processing JD file: {str(e)}")
+
+
+@router.get("/campaigns/{campaign_id}/rubric")
+def get_rubric(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.repo.list_rubric(campaign_id)
 
 
 @router.put("/campaigns/{campaign_id}/rubric")
@@ -212,6 +245,25 @@ def get_public_job(campaign_id: UUID, service: Module1Service = Depends(service_
 @router.post("/public/jobs/{campaign_id}/apply", status_code=201)
 def apply_candidate(campaign_id: UUID, payload: CandidateApplyRequest, service: Module1Service = Depends(service_dep)):
     return service.apply_candidate(campaign_id, payload)
+
+
+@router.post("/public/jobs/{campaign_id}/apply-file", status_code=201)
+def apply_candidate_file(
+    campaign_id: UUID,
+    file: UploadFile = File(...),
+    service: Module1Service = Depends(service_dep),
+):
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in ("pdf", "docx", "doc"):
+        raise AppError(400, "Only PDF and DOCX files are supported.")
+        
+    try:
+        content = file.file.read()
+        return service.apply_candidate_file(campaign_id, content, file.filename)
+    except AppError as e:
+        raise e
+    except Exception as e:
+        raise AppError(500, f"Error processing CV file: {str(e)}")
 
 
 @router.get("/campaigns/{campaign_id}/candidates")

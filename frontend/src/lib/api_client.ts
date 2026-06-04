@@ -20,16 +20,18 @@ api.interceptors.request.use(
 // ── Campaign APIs ────────────────────────────────────────────────────────────
 
 export const campaignApi = {
-  list: () => api.get('/campaigns/'),
+  list: () => api.get('/campaigns'),
   get: (id: string) => api.get(`/campaigns/${id}`),
   create: (data: { title: string; status?: string; deadline?: string }) =>
-    api.post('/campaigns/', data),
+    api.post('/campaigns', data),
+  getRubric: (id: string) => api.get(`/campaigns/${id}/rubric`),
   updateRubric: (id: string, rubric: Record<string, unknown>) =>
     api.put(`/campaigns/${id}/rubric`, rubric),
 
   /** Upload JD file → AI returns rubric JSON */
-  extractRubric: (file: File) => {
+  extractRubric: (campaignId: string, file: File) => {
     const form = new FormData();
+    form.append('campaign_id', campaignId);
     form.append('file', file);
     return api.post('/campaigns/ai-core/jd/extract-rubric', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -58,6 +60,29 @@ export const candidateApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+
+  /** Upload single CV file */
+  applyFile: (campaignId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`/public/jobs/${campaignId}/apply-file`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  /** List candidates in campaign */
+  list: (campaignId: string) => api.get(`/campaigns/${campaignId}/candidates`),
+
+  /** Trigger scoring for single candidate */
+  score: (campaignId: string, candidateId: string) =>
+    api.post(`/campaigns/${campaignId}/candidates/score`, { candidate_id: candidateId }),
+
+  /** Trigger scoring for bulk candidates */
+  bulkScore: (campaignId: string, candidateIds?: string[]) =>
+    api.post(`/campaigns/${campaignId}/candidates/bulk-score`, { candidate_ids: candidateIds }),
+
+  /** Get final review with score breakdown */
+  finalReview: (candidateId: string) => api.get(`/candidates/${candidateId}/final-review`),
 
   /** Leaderboard for a campaign */
   leaderboard: (campaignId: string, params?: { status?: string; min_score?: number }) =>

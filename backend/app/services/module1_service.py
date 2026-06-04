@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import timedelta
 from typing import Any
@@ -18,11 +18,13 @@ from app.schemas.module1 import (
     Candidate,
     CandidateApplyRequest,
     CandidateCompareRequest,
+    CandidateScore,
     CandidateStageEvent,
     CandidateStatus,
     CandidateStatusUpdateRequest,
     EmailEvent,
     EmailType,
+    InterviewReport,
     FinalDecisionRequest,
     FinalReviewResponse,
     GenerateTestQuestionsRequest,
@@ -236,6 +238,46 @@ class Module1Service:
         candidate = self.repo.create_candidate(Candidate(campaign_id=campaign.id, **payload.model_dump()))
         self.repo.create_audit_log("CANDIDATE_APPLIED", "candidate", candidate.id, {"campaign_id": str(campaign.id)})
         return candidate
+
+    def apply_candidate_file(self, campaign_id: UUID, file_bytes: bytes, file_name: str) -> Candidate:
+        from app.core.document_parser import extract_text_from_pdf, extract_text_from_docx
+        
+        # Extract text based on extension
+        ext = file_name.split(".")[-1].lower()
+        if ext == "pdf":
+            cv_text = extract_text_from_pdf(file_bytes)
+        elif ext in ("docx", "doc"):
+            cv_text = extract_text_from_docx(file_bytes)
+        else:
+            raise AppError(400, "Unsupported CV file format. Only PDF and DOCX are supported.")
+            
+        if not cv_text.strip():
+            raise AppError(400, "Could not extract text from CV file. The file might be empty or scanned as image.")
+            
+        # Extract details using Gemini
+        info = self.ai.extract_candidate_info(cv_text)
+        
+        full_name = info.get("full_name") or file_name.split("/")[-1].replace(f".{ext}", "")
+        email = info.get("email")
+        phone = info.get("phone")
+        
+        # Fallback regex email parsing in case AI failed or returned null
+        if not email:
+            import re
+            email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', cv_text)
+            if email_match:
+                email = email_match.group(0)
+            else:
+                email = f"{full_name.lower().replace(' ', '.')}@example.com"
+                
+        payload = CandidateApplyRequest(
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            cv_text=cv_text,
+            cv_file_name=file_name,
+        )
+        return self.apply_candidate(campaign_id, payload)
 
     def list_candidates(self, campaign_id: UUID) -> list[Candidate]:
         self._campaign_or_404(campaign_id)

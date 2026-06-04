@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any
@@ -29,4 +29,8 @@ class AIProvider(ABC):
 
     @abstractmethod
     def generate_candidate_feedback(self, candidate: Candidate, decision: str, context: dict[str, Any]) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def extract_candidate_info(self, cv_text: str) -> dict[str, str | None]:
         raise NotImplementedError

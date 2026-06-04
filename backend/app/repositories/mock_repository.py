@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -70,95 +70,13 @@ class MockRepository:
             "and the ability to document customer cases clearly. Candidates should have experience managing difficult "
             "conversations, prioritizing urgent issues, and collaborating with product or operations teams."
         )
-        campaign = Campaign(
-            title="Customer Support Specialist",
-            jd_text=jd,
-            status=CampaignStatus.ACTIVE,
-            public_token="demo-customer-support",
-            created_by=hr.id,
-            deadline_at=now_utc() + timedelta(days=14),
-        )
-        self.campaigns[campaign.id] = campaign
+        self._seed_mock_data()
 
-        for item in [
-            (RubricCategory.hard_skill, "CRM and ticket handling", 25, "Use CRM tools and maintain clear case notes."),
-            (RubricCategory.soft_skill, "Communication and empathy", 30, "De-escalate frustrated customers with clarity."),
-            (RubricCategory.experience, "Customer support experience", 25, "Relevant support or service recovery experience."),
-            (RubricCategory.hard_skill, "Problem solving", 15, "Diagnose issues and coordinate next steps."),
-            (RubricCategory.certification, "Relevant training", 5, "Customer service or communication training."),
-        ]:
-            rubric = RubricCriterion(
-                campaign_id=campaign.id,
-                category=item[0],
-                name=item[1],
-                weight=item[2],
-                description=item[3],
-            )
-            self.rubric_criteria[rubric.id] = rubric
-
-        for index, text in enumerate([
-            "A customer has contacted support three times without resolution. What should you do first?",
-            "Which CRM note is most useful for the next support agent?",
-            "A customer asks for a refund that policy does not allow. What is the best response?",
-            "How should urgent support tickets be prioritized?",
-            "A product bug affects several customers. What should support do?",
-            "What is the best way to confirm you understood a customer issue?",
-            "A customer uses angry language in chat. What should you avoid?",
-            "When should a ticket be escalated to engineering?",
-            "What makes a support handoff effective?",
-            "How should recurring customer complaints be documented?",
-        ], start=1):
-            question = TestQuestion(
-                campaign_id=campaign.id,
-                question_text=text,
-                difficulty="medium",
-                skill_tag="customer_support",
-                options=[
-                    {"id": "A", "text": "Acknowledge the issue, verify context, and define a clear next step."},
-                    {"id": "B", "text": "Ask the customer to start over with a new ticket."},
-                    {"id": "C", "text": "Close the case if the answer is not obvious."},
-                    {"id": "D", "text": "Promise an outcome before reviewing the facts."},
-                ],
-                correct_option_id="A",
-                explanation="A structured, empathetic response is the safest support action.",
-                status=TestQuestionStatus.PUBLISHED,
-                order_index=index,
-            )
-            self.test_questions[question.id] = question
-
-        candidates = [
-            ("An Nguyen", "an.nguyen@example.com", "Customer support specialist with 4 years of CRM, ticket management, conflict resolution, and live chat experience.", CandidateStatus.CV_SCORED),
-            ("Binh Tran", "binh.tran@example.com", "Retail associate with strong communication skills and basic customer service experience.", CandidateStatus.APPLIED),
-            ("Chi Le", "chi.le@example.com", "Senior support agent experienced in Zendesk, escalation handling, documentation, and mentoring.", CandidateStatus.INTERVIEW_COMPLETED),
-        ]
-        for name, email, cv_text, status in candidates:
-            candidate = Candidate(
-                campaign_id=campaign.id,
-                full_name=name,
-                email=email,
-                phone="0900000000",
-                cv_text=cv_text,
-                cv_file_name=f"{name.lower().replace(' ', '_')}_cv.pdf",
-                status=status,
-            )
-            self.candidates[candidate.id] = candidate
-
-        scored = next(c for c in self.candidates.values() if c.email == "an.nguyen@example.com")
-        score = CandidateScore(
-            candidate_id=scored.id,
-            campaign_id=scored.campaign_id,
-            score=86,
-            badge=CandidateBadge.STRONG,
-            ai_reasoning="Strong CRM, customer communication, and conflict resolution alignment.",
-            score_breakdown={"crm": 25, "communication": 28, "experience": 22, "problem_solving": 11},
-            risk_flags=[],
-        )
-        self.candidate_scores[score.id] = score
-
+    def _seed_mock_data(self):
         self.create_audit_log(
             action="MOCK_SEED_CREATED",
             entity_type="storage",
-            metadata={"mode": "mock"},
+            metadata={"mode": "production_clean"},
             actor_email="system@hiretrain.ai",
         )
 
