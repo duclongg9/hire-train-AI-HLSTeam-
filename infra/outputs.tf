@@ -17,6 +17,7 @@ output "s3_assets_domain_name" { value = module.s3_assets.bucket_domain_name }
 
 output "ecr_repository_url" { value = module.ecr.repository_url }
 output "ecr_repository_arn" { value = module.ecr.repository_arn }
+output "ecr_registry_url" { value = split("/", module.ecr.repository_url)[0] }
 
 output "github_actions_role_arn" { value = module.iam.github_actions_role_arn }
 output "oidc_provider_arn" { value = module.iam.oidc_provider_arn }

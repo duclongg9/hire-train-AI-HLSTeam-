@@ -71,16 +71,16 @@ module "backend_ec2" {
   tags                 = merge(local.common_tags, { Role = "backend" })
 }
 
-# module "elasticache" {
-#   source          = "./modules/elasticache"
-#   cluster_id      = "hls-redis"
-#   node_type       = var.cache_node_type
-#   num_cache_nodes = var.cache_num_nodes
-#   subnet_ids      = [module.vpc.private_subnet_id]
-#   vpc_id          = module.vpc.vpc_id
-#   allowed_sg_ids  = [module.backend_ec2.security_group_id]
-#   tags            = local.common_tags
-# }
+module "elasticache" {
+  source          = "./modules/elasticache"
+  cluster_id      = "hls-redis"
+  node_type       = var.cache_node_type
+  num_cache_nodes = var.cache_num_nodes
+  subnet_ids      = [module.vpc.private_subnet_id]
+  vpc_id          = module.vpc.vpc_id
+  allowed_sg_ids  = [module.backend_ec2.security_group_id]
+  tags            = local.common_tags
+}
 
 # AI Services IAM Policy for Backend EC2
 resource "aws_iam_role_policy" "backend_ai_services" {
