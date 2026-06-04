@@ -1,4 +1,4 @@
-﻿# HireTrain AI Backend
+# HireTrain AI Backend
 
 FastAPI backend for Module 1 of HireTrain AI. It supports the full recruitment workflow structurally: campaign creation, JD analysis, rubric editing, test question generation, candidate application, CV scoring, leaderboard, test invitation/submission, virtual interview lifecycle, final review, secure bulk result emails, and audit logs.
 
@@ -49,12 +49,13 @@ Then set:
 ```env
 APP_ENV=development
 STORAGE_PROVIDER=supabase
-DATABASE_URL=postgresql://...
+# Quan trọng: Nếu bị lỗi tenant/user not found, hãy kiểm tra Pooler Host là aws-0 hay aws-1 trong mục Connect -> Session pooler
+DATABASE_URL=postgresql://postgres.ymbrkesxmsjrsemfrknq:[YOUR-PASSWORD]@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-The app fails fast if required Supabase credentials are missing. It does not silently use mock storage when `STORAGE_PROVIDER=supabase` is selected.
+The app fails fast if required Supabase credentials are missing. It does not silently use mock storage when `STORAGE_PROVIDER=supabase` is selected. Make sure you use the Session Pooler connection string (port 5432) and remove `?pgbouncer=true` if using psycopg2.
 
 
 ## Supabase Smoke Test
