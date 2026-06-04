@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Copy files package.json & lockfile
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Copy all frontend source files
 COPY . .
@@ -18,7 +18,7 @@ ENV NODE_ENV=production
 
 # Copy package files and install only production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --only=production --legacy-peer-deps
 
 # Copy the built output and public assets from the builder stage
 COPY --from=builder /app/.next ./.next
