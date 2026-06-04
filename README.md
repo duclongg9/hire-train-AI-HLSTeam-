@@ -39,9 +39,11 @@ The backend handles AI processing (JD parsing, CV scoring) via Google Gemini.
 4. Configure Environment Variables:
    Create a `.env` file inside the `backend` folder and add your Google Gemini API Key:
    ```env
+   # Default is mock mode (in-memory DB)
+   STORAGE_PROVIDER=mock
    GEMINI_API_KEY=your_gemini_api_key_here
    ```
-   *(Note: The system currently runs with an in-memory mock database. You do not need to set up PostgreSQL or Supabase for local testing yet).*
+   *(Note: By default, the system runs with an in-memory mock database for easy local testing. To use a real Supabase database, see the "Running with Supabase" section below).*
 
 5. Run the server:
    ```bash
@@ -71,3 +73,16 @@ The backend handles AI processing (JD parsing, CV scoring) via Google Gemini.
 2. Create a **New Campaign** by entering a title and clicking the create button.
 3. Upload a JD (PDF or DOCX) to let the AI generate a scoring Rubric.
 4. Go to the Campaign Details, upload candidate CVs, and click **Score Selected** to let Gemini evaluate them based on the generated Rubric.
+
+## Running with Supabase (Production Mode)
+
+If you want to persist data to a real database, you can switch the backend to use Supabase (PostgreSQL).
+
+1. In your `backend/.env` file, change the `STORAGE_PROVIDER` and add your Supabase credentials:
+   ```env
+   STORAGE_PROVIDER=supabase
+   DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-SUPABASE-REF].supabase.co:5432/postgres
+   SUPABASE_URL=https://[YOUR-SUPABASE-REF].supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   ```
+2. Restart the FastAPI backend server. The system will now automatically connect to your Supabase PostgreSQL instance and persist all campaigns, candidates, and AI scoring results!
