@@ -59,6 +59,15 @@ data "aws_iam_policy_document" "github_ecr_policy" {
     ]
     resources = var.ecr_repository_arns
   }
+
+  statement {
+    effect    = "Allow"
+    actions   = ["ssm:SendCommand"]
+    resources = [
+      "arn:aws:ec2:*:*:instance/*",
+      "arn:aws:ssm:*:*:document/AWS-RunShellScript"
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "github_ecr_policy" {

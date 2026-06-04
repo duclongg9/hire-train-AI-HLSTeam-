@@ -8,11 +8,6 @@ RUN npm ci
 
 # Copy all frontend source files
 COPY . .
-
-# Receive the API URL at build-time (NEXT_PUBLIC_ variables are baked in during build)
-ARG NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-
 # Build the Next.js application
 RUN npm run build
 
