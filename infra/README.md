@@ -162,5 +162,6 @@ Sau khi chạy `terraform apply` thành công, các output đầu ra sẽ hiển
 | `BACKEND_INSTANCE_ID` | `backend_instance_id` | ID instance EC2 Backend |
 | `FRONTEND_INSTANCE_ID` | `frontend_instance_id` | ID instance EC2 Frontend |
 | `BACKEND_PRIVATE_IP` | `backend_private_ip` | IP nội bộ của EC2 Backend |
+| `SECRETS_MANAGER_NAME` | `secrets_manager_name` | Tên của Secret trong AWS Secrets Manager |
 
-*Lưu ý: Các biến môi trường ứng dụng của Supabase (`DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) và Gemini (`GEMINI_API_KEY`) cần được điền thủ công vào GitHub Secrets.*
+*Lưu ý: Các biến môi trường ứng dụng (`database_url`, `supabase_url`, `supabase_service_role_key`, `gemini_api_key`) giờ đây được khai báo trực tiếp trong tệp `terraform.tfvars` ở máy local của bạn. Khi chạy `terraform apply`, Terraform sẽ tự động mã hóa và đẩy chúng lên AWS Secrets Manager.*

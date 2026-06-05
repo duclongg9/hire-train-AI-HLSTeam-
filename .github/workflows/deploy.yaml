@@ -66,9 +66,12 @@ jobs:
             --parameters 'commands=[
               "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
               "docker pull ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:backend-latest",
+              "aws secretsmanager get-secret-value --secret-id ${{ secrets.SECRETS_MANAGER_NAME }} --query SecretString --output text > /home/ec2-user/backend_raw.json",
+              "python3 -c \"import json, sys; d=json.load(open(\x27/home/ec2-user/backend_raw.json\x27)); sys.stdout.write(\x27\x27.join(f\x27{k}={v}\\n\x27 for k,v in d.items()))\" > /home/ec2-user/backend.env",
               "docker stop hls-backend || true",
               "docker rm hls-backend || true",
-              "docker run -d --name hls-backend -p 8000:8000 --restart always -e APP_ENV=production -e STORAGE_PROVIDER=supabase -e DATABASE_URL=\"${{ secrets.DATABASE_URL }}\" -e SUPABASE_URL=\"${{ secrets.SUPABASE_URL }}\" -e SUPABASE_SERVICE_ROLE_KEY=\"${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}\" -e AI_PROVIDER=gemini -e GEMINI_API_KEY=\"${{ secrets.GEMINI_API_KEY }}\" ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:backend-latest"
+              "docker run -d --name hls-backend -p 8000:8000 --restart always --env-file /home/ec2-user/backend.env ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:backend-latest",
+              "rm -f /home/ec2-user/backend_raw.json /home/ec2-user/backend.env"
             ]' \
             --comment "Deploy Backend Container"
 

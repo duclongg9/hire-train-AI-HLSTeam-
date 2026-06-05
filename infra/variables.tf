@@ -56,4 +56,27 @@ variable "tags" {
   default = {}
 }
 
+variable "database_url" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "supabase_url" {
+  type    = string
+  default = ""
+}
+
+variable "supabase_service_role_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
+variable "gemini_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 // Note: keep variable declarations single — validations may be added in follow-ups

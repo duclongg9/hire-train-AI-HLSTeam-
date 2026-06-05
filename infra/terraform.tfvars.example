@@ -23,4 +23,11 @@ ecr_repository_name = "hls-backend"
 github_org = "my-org"
 github_repo = "HLS-backend-base"
 github_branch = "main"
+
+# Backend application secrets
+database_url              = "postgresql://postgres.[db_project_id]:[password]@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres"
+supabase_url              = "https://your-project.supabase.co"
+supabase_service_role_key = "eyJhbGciOi..."
+gemini_api_key            = "AIzaSy..."
+
 # Example variable values — populated in task 10.2

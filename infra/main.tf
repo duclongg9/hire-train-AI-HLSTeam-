@@ -82,6 +82,16 @@ module "elasticache" {
   tags            = local.common_tags
 }
 
+module "secrets" {
+  source                    = "./modules/secrets"
+  project_name              = var.project_name
+  database_url              = var.database_url
+  supabase_url              = var.supabase_url
+  supabase_service_role_key = var.supabase_service_role_key
+  gemini_api_key            = var.gemini_api_key
+  tags                      = local.common_tags
+}
+
 # AI Services IAM Policy for Backend EC2
 resource "aws_iam_role_policy" "backend_ai_services" {
   name = "${var.project_name}-backend-ai-services-policy"
@@ -107,6 +117,11 @@ resource "aws_iam_role_policy" "backend_ai_services" {
           "transcribe:StartStreamTranscription"
         ]
         Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [module.secrets.secret_arn]
       }
     ]
   })
