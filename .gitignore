@@ -44,3 +44,6 @@ supabase/.temp/
 .terraform.lock.hcl
 *.tfstate.backup
 *.tfvars
+
+#demo
+demo/
