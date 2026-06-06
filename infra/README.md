@@ -13,16 +13,15 @@ graph TD
     subgraph AWS Cloud
         subgraph VPC [VPC: 10.0.0.0/16]
             IGW[Internet Gateway]
-            NAT[NAT Gateway]
 
             subgraph Public Subnet [Public Subnet: 10.0.1.0/24]
                 FE[EC2 Frontend - Next.js]
                 style FE fill:#d4edda,stroke:#28a745,stroke-width:2px
+                BE[EC2 Backend - FastAPI]
+                style BE fill:#f8d7da,stroke:#dc3545,stroke-width:2px
             end
 
             subgraph Private Subnet [Private Subnet: 10.0.2.0/24]
-                BE[EC2 Backend - FastAPI]
-                style BE fill:#f8d7da,stroke:#dc3545,stroke-width:2px
                 Redis[(ElastiCache Redis)]
             end
 
@@ -34,6 +33,7 @@ graph TD
         ECR[(Amazon ECR)]
         S3_Internal[(S3 Internal Bucket)]
         S3_Assets[(S3 Public Assets)]
+        SecretSSH[(Secrets Manager: SSH Key)]
     end
 
     %% Client/User connections
@@ -42,17 +42,13 @@ graph TD
     BE -->|Internal TCP| Redis
 
     %% Deployment & ECR connections
-    GHA[GitHub Actions] -->|ssm:SendCommand| BE
-    GHA -->|ssm:SendCommand| FE
+    GHA[GitHub Actions] -->|SSH/SCP: Port 22| BE
+    GHA -->|SSH/SCP: Port 22| FE
+    GHA -->|Get SSH Key| SecretSSH
     BE -->|Pull image via Endpoint| ECR
     ECR -.->|Layers stored in S3| VPCE_S3
     BE -->|Read/Write Private Data| S3_Internal
     User -->|Read Public Assets| S3_Assets
-    
-    %% Internet access
-    FE -->|Outbound traffic| IGW
-    BE -->|Outbound traffic| NAT
-    NAT --> IGW
 ```
 
 ---
@@ -84,20 +80,21 @@ infra/
 
 ### A. Mạng & Định tuyến (VPC Module)
 * **VPC**: `10.0.0.0/16`.
-* **Public Subnet**: `10.0.1.0/24`, có gắn IP công khai và định tuyến ra Internet qua Internet Gateway.
-* **Private Subnet**: `10.0.2.0/24`, không có IP công khai, đi ra ngoài qua NAT Gateway.
-* **PrivateLink (VPC Endpoints)**: Tích hợp sẵn endpoint cho **S3** và **ECR (dkr & api)** để EC2 Backend kéo Docker image trực tiếp qua mạng nội bộ AWS mà không tốn phí NAT Gateway.
+* **Public Subnet**: `10.0.1.0/24`, chứa cả 2 máy chủ EC2 Frontend và Backend. Cả hai đều có IP công khai (Public IP) và định tuyến trực tiếp qua Internet Gateway.
+* **Private Subnet**: `10.0.2.0/24`, chứa cụm ElastiCache Redis biệt lập, không có IP công khai.
+* **PrivateLink (VPC Endpoints)**: Tích hợp sẵn endpoint cho **S3** và **ECR (dkr & api)** để các EC2 kéo Docker image trực tiếp qua mạng nội bộ AWS.
 
 ### B. Máy chủ & Bảo mật (EC2 Module)
-* **Frontend Instance**: Nằm ở Public Subnet. Chỉ mở cổng **`80`** (HTTP) và **`443`** (HTTPS) cho toàn bộ internet.
-* **Backend Instance**: Nằm ở Private Subnet. Chỉ mở cổng **`8000`** nhận traffic truyền từ Security Group của Frontend.
-* **Bảo mật truy cập**: Cả 2 máy chủ đều được tắt cổng SSH 22. Việc truy cập Terminal được thực hiện bảo mật qua **AWS Systems Manager (SSM) Session Manager**.
+* **Frontend Instance**: Nằm ở Public Subnet. Mở cổng **`80`** (HTTP), **`443`** (HTTPS) và **`22`** (SSH) để deploy qua GitHub Actions.
+* **Backend Instance**: Nằm ở Public Subnet. Mở cổng **`8000`** (FastAPI) và **`22`** (SSH) để deploy và kết nối từ bên ngoài.
+* **Bảo mật truy cập**: SSH Private Key được tạo ngẫu nhiên bảo mật qua provider `tls` của Terraform và tự động đẩy trực tiếp lên **AWS Secrets Manager** dưới tên `${var.project_name}-ssh-key`.
 
 ### C. Quản lý Quyền hạn (IAM Module)
 * **GitHub Actions Role (OIDC)**: Sử dụng cơ chế OpenID Connect của GitHub để đăng nhập vào AWS mà không cần Access Key. Role này có quyền:
   * Đẩy Docker image lên ECR.
-  * Gọi lệnh **`ssm:SendCommand`** đến các EC2 để chạy lệnh cập nhật container từ xa.
-* **EC2 Role**: Được đính kèm quyền pull ảnh ECR, sử dụng SSM Agent, đọc/ghi S3 và gọi các dịch vụ AWS AI (**Bedrock**, **Polly**, **Transcribe**).
+  * Đọc SSH private key từ Secrets Manager.
+  * Mô tả tài nguyên EC2 (`ec2:DescribeInstances`) để tự động tìm IP công khai của máy chủ lúc deploy.
+* **EC2 Role**: Được đính kèm quyền pull ảnh ECR, đọc/ghi S3 và gọi các dịch vụ AWS AI (**Bedrock**, **Polly**, **Transcribe**).
 
 ### D. Bộ nhớ đệm & Lưu trữ
 * **ElastiCache Redis**: Nằm ở Private Subnet, chỉ chấp nhận kết nối từ EC2 Backend.
@@ -159,9 +156,11 @@ Sau khi chạy `terraform apply` thành công, các output đầu ra sẽ hiển
 | `AWS_ROLE_ARN` | `github_actions_role_arn` | Vai trò IAM cho GitHub Actions kết nối AWS |
 | `ECR_REGISTRY` | `ecr_registry_url` | Tên miền ECR (ví dụ: `<id>.dkr.ecr.us-east-1.amazonaws.com`) |
 | `ECR_REPOSITORY_NAME` | Tên dự án (mặc định: `hls-backend`) | Tên kho chứa ECR |
-| `BACKEND_INSTANCE_ID` | `backend_instance_id` | ID instance EC2 Backend |
-| `FRONTEND_INSTANCE_ID` | `frontend_instance_id` | ID instance EC2 Frontend |
-| `BACKEND_PRIVATE_IP` | `backend_private_ip` | IP nội bộ của EC2 Backend |
+| `BACKEND_INSTANCE_ID` | `backend_instance_id` | ID instance EC2 Backend (để tự động lấy IP Public/Private) |
+| `FRONTEND_INSTANCE_ID` | `frontend_instance_id` | ID instance EC2 Frontend (để tự động lấy IP Public) |
 | `SECRETS_MANAGER_NAME` | `secrets_manager_name` | Tên của Secret trong AWS Secrets Manager |
 
-*Lưu ý: Các biến môi trường ứng dụng (`database_url`, `supabase_url`, `supabase_service_role_key`, `gemini_api_key`) giờ đây được khai báo trực tiếp trong tệp `terraform.tfvars` ở máy local của bạn. Khi chạy `terraform apply`, Terraform sẽ tự động mã hóa và đẩy chúng lên AWS Secrets Manager.*
+*Lưu ý:*
+* **`BACKEND_PRIVATE_IP`**: Bạn **không cần** cấu hình thủ công secret này nữa. GitHub Actions sẽ tự động truy vấn IP Private của máy Backend qua AWS API để cấu hình proxy cho Frontend.
+* **Các biến môi trường ứng dụng**: (`database_url`, `supabase_url`, `supabase_service_role_key`, `gemini_api_key`) giờ đây được khai báo trực tiếp trong tệp `terraform.tfvars` ở máy local của bạn. Khi chạy `terraform apply`, Terraform sẽ tự động mã hóa và đẩy chúng lên AWS Secrets Manager.
+* **SSH Key**: Cũng được khởi tạo động bởi Terraform và tự động đưa vào AWS Secrets Manager. Github Actions sẽ tự động lấy key này lúc deploy qua SSH.
