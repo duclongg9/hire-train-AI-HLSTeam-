@@ -63,7 +63,7 @@ export default function CampaignsPage() {
         title: form.name,
         department_scope: form.department,
         start_date: new Date(`${form.startDate}T00:00:00`).toISOString(),
-        deadline_at: new Date(`${form.endDate}T23:59:59`).toISOString(),
+        end_date: new Date(`${form.endDate}T23:59:59`).toISOString(),
         status: "DRAFT"
       })
       setCampaigns([created, ...campaigns])
@@ -131,7 +131,7 @@ export default function CampaignsPage() {
                       <TableCell>
                         <div className="text-sm">
                           <div>{camp.start_date ? format(new Date(camp.start_date), "dd/MM/yyyy") : "N/A"}</div>
-                          <div className="text-xs text-muted-foreground">{camp.deadline_at ? format(new Date(camp.deadline_at), "dd/MM/yyyy") : "N/A"}</div>
+                          <div className="text-xs text-muted-foreground">{camp.end_date ? format(new Date(camp.end_date), "dd/MM/yyyy") : (camp.deadline_at ? format(new Date(camp.deadline_at), "dd/MM/yyyy") : "N/A")}</div>
                         </div>
                       </TableCell>
                       <TableCell>

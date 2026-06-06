@@ -591,8 +591,11 @@ export function CriteriaScoringScreen({ onStatusChange }: { onStatusChange?: (sa
       </div>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <Button variant="outline" disabled={loading || saving} onClick={saveToBackend}>
+          <Button variant="outline" disabled={loading || saving || publishing} onClick={saveToBackend}>
             {saving ? "Saving..." : "Save Rubric"}
+          </Button>
+          <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" disabled={loading || publishing} onClick={publishToBackend}>
+            {publishing ? "Publishing..." : "Publish Position"}
           </Button>
         </div>
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm">

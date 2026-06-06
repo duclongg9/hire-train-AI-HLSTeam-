@@ -450,6 +450,21 @@ export function InterviewRubricEditorPage({ onStatusChange }: { onStatusChange?:
           <Button variant="outline" disabled={saving} onClick={handleSave}>
             {saving ? "Saving..." : "Save Interview Rubric"}
           </Button>
+          <Button 
+            className="bg-[#0033A0] text-white hover:bg-[#00256f]" 
+            onClick={async () => {
+              if (!positionId) return
+              try {
+                const { publishPosition } = await import("@/features/hr/api/hr-api")
+                await publishPosition(positionId)
+                alert("Position published successfully!")
+              } catch (err) {
+                alert("Failed to publish position.")
+              }
+            }}
+          >
+            Publish Position
+          </Button>
         </div>
       </div>
     </div>

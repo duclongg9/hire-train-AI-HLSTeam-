@@ -779,6 +779,21 @@ export function TestReviewScreen({ onStatusChange }: { onStatusChange?: (saved: 
           <Button variant="outline" disabled={saving} onClick={handleSave}>
             {saving ? "Saving..." : "Save Questions"}
           </Button>
+          <Button 
+            className="bg-[#0033A0] text-white hover:bg-[#00256f]" 
+            onClick={async () => {
+              if (!positionId) return
+              try {
+                const { publishPosition } = await import("@/features/hr/api/hr-api")
+                await publishPosition(positionId)
+                alert("Position published successfully!")
+              } catch (err) {
+                alert("Failed to publish position.")
+              }
+            }}
+          >
+            Publish Position
+          </Button>
         </div>
       </div>
     </div>
@@ -1137,6 +1152,14 @@ export function LeaderboardScreen() {
     <>
       <PageHeader title='Candidate Leaderboard' subtitle='Review CV ranking summaries and open full candidate details when needed.' />
       <div className="space-y-6">
+        <div className="flex items-center">
+          <Link href={campaignId ? `/hr/campaigns/${campaignId}` : "/hr/campaigns"}>
+            <Button variant="ghost">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Quay lại Campaign
+            </Button>
+          </Link>
+        </div>
         {message ? <FormMessage type="success">{message}</FormMessage> : null}
         <Card className="rounded-lg p-4 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

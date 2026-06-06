@@ -22,6 +22,23 @@ export default function PositionAIPipelinePage() {
   const [cvSaved, setCvSaved] = useState(false)
   const [testSaved, setTestSaved] = useState(false)
   const [interviewSaved, setInterviewSaved] = useState(false)
+  const [isPublishing, setIsPublishing] = useState(false)
+
+  const handlePublish = async () => {
+    setIsPublishing(true)
+    try {
+      // Import publishPosition if not already imported
+      const { publishPosition } = await import("@/features/hr/api/hr-api")
+      await publishPosition(positionId)
+      alert("Position published successfully!")
+      router.push(`/hr/campaigns/${campaignId}`)
+    } catch (err) {
+      console.error("Failed to publish position", err)
+      alert("Failed to publish position.")
+    } finally {
+      setIsPublishing(false)
+    }
+  }
 
   return (
     <>
@@ -32,7 +49,7 @@ export default function PositionAIPipelinePage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Positions
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-muted-foreground">
               Status: {cvSaved && testSaved && interviewSaved ? (
                 <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Ready for Publish</span>
@@ -40,6 +57,13 @@ export default function PositionAIPipelinePage() {
                 <span className="text-amber-600">Action Required</span>
               )}
             </span>
+            <Button 
+              className="bg-[#F37021] text-white hover:bg-[#d95f18]" 
+              disabled={!(cvSaved && testSaved && interviewSaved) || isPublishing}
+              onClick={handlePublish}
+            >
+              {isPublishing ? "Publishing..." : "Publish Position"}
+            </Button>
           </div>
         </div>
 

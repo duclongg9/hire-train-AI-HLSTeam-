@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   BarChart3,
   Brain,
+  Building2,
   ClipboardList,
   FileQuestion,
   FileText,
@@ -57,9 +58,7 @@ const hrBaseNav: NavItem[] = [
 ]
 
 const hrCampaignNav = [
-  { segment: "rubric", label: "CV Rubric", icon: ListChecks },
-  { segment: "interview", label: "Interview Rubric", icon: ClipboardList },
-  { segment: "test-review", label: "Test Review", icon: FileQuestion },
+  { segment: "", label: "Overview", icon: Building2 },
   { segment: "leaderboard", label: "Leaderboard", icon: BarChart3 },
 ]
 

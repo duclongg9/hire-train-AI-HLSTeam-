@@ -137,7 +137,12 @@ export default function CampaignDetailPage() {
           </Button>
           <div className="flex items-center gap-3">
             {campaign?.status !== "CLOSED" && campaign?.status !== "ACTIVE" && (
-              <Button variant="outline" className="text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handlePublishCampaign}>
+              <Button 
+                variant="outline" 
+                className="text-green-600 hover:text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed" 
+                onClick={handlePublishCampaign}
+                disabled={!positions.some(p => p.status === "PUBLISHED")}
+              >
                 Active Chiến Dịch
               </Button>
             )}
