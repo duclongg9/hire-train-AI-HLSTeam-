@@ -1,5 +1,6 @@
-import { JobApplyPage } from "@/features/jobs/containers/job-pages"
+import { JobApplyPage } from "@/features/jobs/containers/job-apply-page"
 
-export default function ApplyPage() {
-  return <JobApplyPage />
+export default async function ApplyPage({ params }: { params: Promise<{ jobSlug: string }> }) {
+  const { jobSlug } = await params
+  return <JobApplyPage jobSlug={jobSlug} />
 }

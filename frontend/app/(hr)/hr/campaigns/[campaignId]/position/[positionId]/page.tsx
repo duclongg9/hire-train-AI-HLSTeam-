@@ -9,7 +9,7 @@ import { PageHeader } from '@/shared/layout/page-header'
 
 // Import the sub-screens
 import { CriteriaScoringScreen } from "@/features/hr/containers/cv-rubric-screen"
-import { TestReviewScreen } from "@/features/hr/containers/hr-screens"
+import { TestReviewScreen } from "@/features/hr/containers/test-review-screen"
 import { InterviewRubricEditorPage } from "@/features/hr/containers/interview-rubric-editor"
 import { JDUpload } from "@/components/hr-dashboard/jd-upload"
 

@@ -101,7 +101,7 @@ export function listTestQuestions(positionId: string) {
   return request<BackendTestQuestion[]>(`/positions/${positionId}/test-questions`)
 }
 
-export function saveTestQuestions(positionId: string, questions: Array<{ question_text: string; question_type: string; options: any[]; correct_option_id: string | null }>) {
+export function saveTestQuestions(positionId: string, questions: Array<{ question_text: string; question_type: string; options: Array<Record<string, unknown>>; correct_option_id: string | null }>) {
   return request<BackendTestQuestion[]>(`/positions/${positionId}/test-questions`, {
     method: "PUT",
     body: JSON.stringify({ questions }),
