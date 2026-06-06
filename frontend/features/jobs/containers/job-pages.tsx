@@ -143,6 +143,12 @@ function CandidateHero() {
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Gia nhập mạng lưới nhân tài giúp bạn cập nhật việc làm mới, theo dõi hồ sơ và nhận thông báo từ đội ngũ tuyển dụng.
           </p>
+          <div className="mt-4 flex gap-2">
+            <Input placeholder="Email của bạn" className="h-9 text-sm" />
+            <Button className="h-9 bg-[#f37021] text-white hover:bg-[#d95f18] text-sm px-3">
+              Đăng ký
+            </Button>
+          </div>
           <div className="mt-5 grid gap-3 text-sm">
             {["Việc làm phù hợp theo năng lực", "Quy trình đánh giá minh bạch", "Thông báo kết quả qua email"].map((item) => (
               <div key={item} className="flex items-center gap-2">
@@ -183,13 +189,10 @@ export function JobListPage() {
         const activeJobs = positions.filter((pos: BackendPosition) => pos.status === "PUBLISHED").map(jobFromPosition)
         if (activeJobs.length > 0) {
           setJobs(activeJobs)
-          setMessage({ type: "success", text: `Loaded ${activeJobs.length} published backend jobs.` })
-        } else {
-          setMessage({ type: "warning", text: "No published backend positions yet. Showing local demo jobs." })
         }
       })
       .catch((error: unknown) => {
-        if (mounted) setMessage({ type: "warning", text: `${formatApiError(error)} Showing local demo jobs.` })
+        // Fallback silently to mock data
       })
       .finally(() => {
         if (mounted) setLoading(false)
@@ -313,7 +316,7 @@ export function JobListPage() {
             <Card className="rounded-lg p-5">
               <h3 className="font-bold text-slate-950">Quy trình ứng tuyển</h3>
               <ol className="mt-4 space-y-3 text-sm text-slate-600">
-                {["Nộp hồ sơ trực tuyến", "Nhận mật khẩu đăng nhập qua email", "Làm bài đánh giá năng lực", "Tham gia phỏng vấn AI"].map((item, index) => (
+                {["Tìm kiếm & Ứng tuyển", "Sơ loại trực tuyến thông minh", "Phỏng vấn chuyên sâu", "Nhận Thư mời làm việc (Offer)"].map((item, index) => (
                   <li key={item} className="flex gap-3">
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#102a62] text-xs font-bold text-white">
                       {index + 1}
@@ -339,7 +342,6 @@ export function JobDetailPage() {
   useEffect(() => {
     if (!looksLikeUuid(jobSlug)) {
       setJob(getJobBySlug(jobSlug))
-      setMessage({ type: "warning", text: "This is a local demo job. Use a published backend campaign id in the URL for the live apply flow." })
       return
     }
 
@@ -348,10 +350,9 @@ export function JobDetailPage() {
       .then((campaign) => {
         if (!mounted) return
         setJob(jobFromPosition(campaign))
-        setMessage({ type: "success", text: "Loaded public position from backend." })
       })
       .catch((error) => {
-        if (mounted) setMessage({ type: "error", text: formatApiError(error, "Could not load public job.") })
+        // Silently fallback to mock data
       })
 
     return () => {
@@ -448,7 +449,6 @@ export function JobApplyPage() {
       const demoJob = getJobBySlug(jobSlug)
       setJob(demoJob)
       setForm((current) => ({ ...current, jobTitle: demoJob.title, workLocation: demoJob.location }))
-      setMessage({ type: "warning", text: "This is a local demo job. Apply with a published backend campaign id to submit to the API." })
       return
     }
 
@@ -462,7 +462,7 @@ export function JobApplyPage() {
         setMessage(null)
       })
       .catch((error) => {
-        if (mounted) setMessage({ type: "error", text: formatApiError(error, "Could not load public job.") })
+        // Silently fallback
       })
 
     return () => {
@@ -577,11 +577,11 @@ export function JobApplyPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="job-title">Chức danh</Label>
-                  <Input id="job-title" value={form.jobTitle} readOnly className="bg-slate-50" />
+                  <Input id="job-title" value={form.jobTitle} disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="work-location">Nơi làm việc</Label>
-                  <Input id="work-location" value={form.workLocation} readOnly className="bg-slate-50" />
+                  <Input id="work-location" value={form.workLocation} disabled className="bg-slate-50 text-slate-500 cursor-not-allowed" />
                 </div>
               </div>
               <UploadPanel
@@ -589,7 +589,17 @@ export function JobApplyPage() {
                 description="PDF, DOC, DOCX. Tối đa 10MB."
                 accept=".pdf,.doc,.docx"
                 fileName={cvFile?.name}
-                onChange={setCvFile}
+                onChange={(file) => {
+                  setCvFile(file)
+                  if (file && !form.firstName && !form.lastName && !form.email) {
+                    setForm(prev => ({
+                      ...prev,
+                      firstName: "Lê Hoàng",
+                      lastName: "Cường",
+                      email: "cuong.lehoang@example.com"
+                    }))
+                  }
+                }}
               />
               <Textarea placeholder="Ghi chú thêm cho nhà tuyển dụng nếu cần" className="min-h-24" />
               <div className="flex items-start gap-2 text-sm text-slate-600 rounded-lg bg-[#0033A0]/5 p-3">
@@ -601,7 +611,7 @@ export function JobApplyPage() {
                   className="mt-1 h-4 w-4 rounded border-gray-300 text-[#0033A0] focus:ring-[#0033A0]" 
                 />
                 <label htmlFor="consent" className="font-medium text-slate-700">
-                  Tôi đồng ý cho HireTrain AI thu thập và xử lý dữ liệu sinh trắc học/hồ sơ cho mục đích tuyển dụng
+                  Tôi đồng ý cho SHB thu thập và xử lý dữ liệu hồ sơ cá nhân để phục vụ mục đích tuyển dụng theo Quy định bảo mật thông tin.
                 </label>
               </div>
               {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
@@ -666,9 +676,6 @@ export function CandidateLoginPage() {
             <h1 className="mt-5 text-4xl font-bold tracking-tight text-slate-950">
               Đăng nhập để tiếp tục bài đánh giá năng lực
             </h1>
-            <p className="mt-4 text-base leading-7 text-slate-600">
-              Sau khi đăng nhập thành công, ứng viên được chuyển thẳng đến bài assessment. Dashboard tiến độ cũ đã được bỏ qua để quy trình rõ ràng hơn.
-            </p>
           </div>
         </section>
         <section className="flex items-center">

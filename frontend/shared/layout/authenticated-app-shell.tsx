@@ -53,14 +53,11 @@ const adminNav: NavItem[] = [
 ]
 
 const hrBaseNav: NavItem[] = [
-  { href: "/hr", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/hr/campaigns/new", label: "New Campaign", icon: FileText },
+  { href: "/", label: "Trang chủ Portal", icon: Home },
+  { href: "/hr/campaigns", label: "Campaigns", icon: ListChecks },
 ]
 
-const hrCampaignNav = [
-  { segment: "", label: "Overview", icon: Building2 },
-  { segment: "leaderboard", label: "Leaderboard", icon: BarChart3 },
-]
+const hrCampaignNav: any[] = []
 
 function useAuthShell() {
   const context = use(AuthShellContext)
@@ -182,7 +179,7 @@ function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-[#17233A] text-white lg:flex lg:flex-col">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-[#0b0f19] text-white lg:flex lg:flex-col">
       <Link href="/" className="flex items-center gap-3 border-b border-white/10 p-5">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F37021]">
           <Brain className="h-5 w-5" />
@@ -202,7 +199,7 @@ function Sidebar() {
               href={item.href}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
-                active ? "bg-[#F37021] text-white" : "text-white/70 hover:bg-white/10 hover:text-white",
+                active ? "bg-white/10 text-white border-l-2 border-white rounded-l-none" : "text-slate-400 hover:bg-white/5 hover:text-white",
               )}
             >
               <Icon className="h-4 w-4" />

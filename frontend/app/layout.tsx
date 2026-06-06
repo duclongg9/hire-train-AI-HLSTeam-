@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
+import { Inter } from 'next/font/google'
 import './globals.css'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'HireTrain AI - AI Recruitment Platform',
@@ -32,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="font-sans antialiased">
+      <body className={`${inter.className} antialiased text-slate-800`}>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

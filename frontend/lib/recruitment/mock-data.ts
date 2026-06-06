@@ -43,6 +43,12 @@ export interface TestQuestion {
   relatedSkill: string
 }
 
+export interface ScoreBreakdownItem {
+  score: number;
+  max: number;
+  reason: string;
+}
+
 export interface Candidate {
   id: string
   name: string
@@ -50,6 +56,12 @@ export interface Candidate {
   position: string
   source: "LinkedIn" | "Website" | "Referral" | "Job Board"
   cvScore: number
+  score_breakdown?: {
+    experience: ScoreBreakdownItem;
+    hard_skills: ScoreBreakdownItem;
+    soft_skills: ScoreBreakdownItem;
+  }
+  action_recommendation?: "auto_shortlist" | "auto_reject" | "manual_review"
   testScore: number
   interviewScore: number
   totalScore: number
@@ -60,8 +72,8 @@ export interface Candidate {
   yearsExperience: number
   salaryExpectation?: string
   aiRecommendation: string
-  strengths: string[]
-  weaknesses: string[]
+  strengths: { trait: string; evidence: string }[]
+  weaknesses: { trait: string; evidence: string }[]
   riskFlags: string[]
   reasoning: string[]
 }
@@ -138,18 +150,18 @@ export const systemLogs: SystemLog[] = [
 
 export const campaigns = [
   {
-    id: "camp-frontend-2026",
-    name: "Q3 Frontend Hiring",
-    jobTitle: "Senior Frontend Engineer",
+    id: "camp-retail-2026",
+    name: "Chiến dịch Tuyển dụng Q3/2026",
+    jobTitle: "Chuyên viên Quan hệ Khách hàng Cá nhân",
     deadline: "2026-07-15",
-    activeCandidates: 42,
+    activeCandidates: 350,
   },
   {
-    id: "camp-cx-2026",
-    name: "Customer Experience Scale-up",
-    jobTitle: "CX Specialist",
+    id: "camp-teller-2026",
+    name: "Tuyển dụng Giao dịch viên Toàn quốc",
+    jobTitle: "Giao dịch viên",
     deadline: "2026-06-30",
-    activeCandidates: 31,
+    activeCandidates: 1200,
   },
 ]
 
@@ -293,132 +305,190 @@ export const testQuestions: TestQuestion[] = [
 export const candidates: Candidate[] = [
   {
     id: "cand-001",
-    name: "Nguyen Van An",
+    name: "Nguyễn Văn An",
     email: "an.nguyen@example.com",
-    position: "Senior Frontend Engineer",
+    position: "Chuyên viên Quan hệ Khách hàng Cá nhân",
     source: "LinkedIn",
     cvScore: 94,
+    score_breakdown: {
+      experience: { score: 25, max: 30, reason: "Có 3 năm kinh nghiệm tín dụng, đạt yêu cầu 2-5 năm" },
+      hard_skills: { score: 49, max: 50, reason: "Đầy đủ Tín dụng, Huy động. Từng quản lý danh mục > 50 tỷ." },
+      soft_skills: { score: 20, max: 20, reason: "Kỹ năng thuyết phục, đàm phán rất tốt." }
+    },
+    action_recommendation: "auto_shortlist",
     testScore: 88,
     interviewScore: 91,
     totalScore: 91,
-    matchedSkills: ["React", "TypeScript", "Testing", "Design systems"],
-    missingSkills: ["GraphQL depth"],
+    matchedSkills: ["Tín dụng", "Huy động vốn", "Thuyết phục", "Đàm phán"],
+    missingSkills: ["Kinh nghiệm bán chéo bảo hiểm"],
     status: "Interview",
     progress: 92,
-    yearsExperience: 6,
-    salaryExpectation: "$5,500",
-    aiRecommendation: "Strong hire. Evidence is consistent across CV, test, and interview.",
-    strengths: ["Clear architecture decisions", "Strong test discipline", "Mentoring experience"],
-    weaknesses: ["Limited GraphQL ownership"],
+    yearsExperience: 3,
+    salaryExpectation: "15,000,000 VND",
+    aiRecommendation: "Phù hợp cao. Kinh nghiệm tín dụng tốt, giao tiếp tự tin.",
+    strengths: [
+      { trait: "Hiểu biết sâu sản phẩm vay", evidence: "Đã giải ngân >50 tỷ tín dụng tại VIB." },
+      { trait: "Kỹ năng tư vấn tốt", evidence: "Top 3 Sales chi nhánh quý 1/2026." },
+      { trait: "Đã có tệp khách hàng", evidence: "Quản lý danh mục 100+ khách VIP." }
+    ],
+    weaknesses: [
+      { trait: "Chưa mạnh mảng bảo hiểm liên kết (Bancassurance)", evidence: "Doanh số bảo hiểm năm trước chỉ đạt 200tr." }
+    ],
     riskFlags: [],
     reasoning: [
-      "CV examples align with the JD's React architecture needs.",
-      "Test score is high on state management and performance questions.",
-      "Interview answers used specific tradeoffs instead of generic claims.",
+      "CV thể hiện rõ doanh số huy động và tín dụng tại ngân hàng cũ.",
+      "Bài test đạt điểm cao ở phần xử lý tình huống nợ xấu.",
+      "Vòng phỏng vấn trả lời thuyết phục các câu hỏi về đánh giá tài chính cá nhân.",
     ],
   },
   {
     id: "cand-002",
-    name: "Tran Thi Binh",
+    name: "Trần Thị Bình",
     email: "binh.tran@example.com",
-    position: "Senior Frontend Engineer",
+    position: "Chuyên viên Quan hệ Khách hàng Cá nhân",
     source: "Referral",
     cvScore: 89,
+    score_breakdown: {
+      experience: { score: 20, max: 30, reason: "Mới 2 năm kinh nghiệm (Mức tối thiểu)" },
+      hard_skills: { score: 49, max: 50, reason: "Bán chéo rất mạnh, huy động tốt. Thiếu tín dụng thế chấp." },
+      soft_skills: { score: 20, max: 20, reason: "Giao tiếp xuất sắc, ngoại hình sáng." }
+    },
+    action_recommendation: "auto_shortlist",
     testScore: 92,
     interviewScore: 86,
     totalScore: 89,
-    matchedSkills: ["TypeScript", "Accessibility", "Product thinking"],
-    missingSkills: ["Large-scale dashboard work"],
+    matchedSkills: ["Giao tiếp", "Bán chéo", "Chăm sóc khách hàng"],
+    missingSkills: ["Thẩm định hồ sơ vay mua nhà"],
     status: "Offer",
     progress: 100,
-    yearsExperience: 5,
-    salaryExpectation: "$5,200",
-    aiRecommendation: "Recommended for offer with dashboard onboarding plan.",
-    strengths: ["Excellent TypeScript answers", "Strong user empathy", "Accessible UI habits"],
-    weaknesses: ["Less exposure to heavy data grids"],
+    yearsExperience: 2,
+    salaryExpectation: "12,000,000 VND",
+    aiRecommendation: "Đề xuất Offer. Ưu thế bán chéo thẻ tín dụng và kỹ năng mềm xuất sắc.",
+    strengths: [
+      { trait: "Bán chéo thẻ tín dụng cực tốt", evidence: "Phát hành thành công 50 thẻ tín dụng/tháng liên tiếp." },
+      { trait: "Thái độ phục vụ chuyên nghiệp", evidence: "Được khách hàng khen ngợi trên hệ thống CSKH 5 lần." },
+      { trait: "Mở rộng nguồn KH", evidence: "Chuyển hóa tốt từ tệp data Telesales sang KH cá nhân." }
+    ],
+    weaknesses: [
+      { trait: "Ít kinh nghiệm xử lý hồ sơ thế chấp lớn", evidence: "Giá trị trung bình mỗi hợp đồng vay < 500tr." }
+    ],
     riskFlags: [],
     reasoning: [
-      "Referral notes match interview evidence.",
-      "Technical test shows reliable fundamentals.",
-      "Would need ramp-up on large dashboard performance constraints.",
+      "Được nội bộ giới thiệu, đã từng làm Telesales tài chính.",
+      "Nắm chắc các quy định về thẻ tín dụng và tiền gửi.",
+      "Cần đào tạo thêm nghiệp vụ vay mua nhà/ô tô khi onboard.",
     ],
   },
   {
     id: "cand-003",
-    name: "Le Hoang Cuong",
+    name: "Lê Hoàng Cường",
     email: "cuong.le@example.com",
-    position: "Senior Frontend Engineer",
+    position: "Chuyên viên Quan hệ Khách hàng Cá nhân",
     source: "Job Board",
     cvScore: 76,
+    score_breakdown: {
+      experience: { score: 10, max: 30, reason: "Chỉ có 1 năm kinh nghiệm tại tổ chức tín dụng nhỏ" },
+      hard_skills: { score: 46, max: 50, reason: "Biết làm tín dụng tiêu dùng. Thiếu huy động dài hạn." },
+      soft_skills: { score: 20, max: 20, reason: "Năng động, đi thị trường tốt." }
+    },
+    action_recommendation: "manual_review",
     testScore: 71,
     interviewScore: 68,
     totalScore: 72,
-    matchedSkills: ["React", "CSS"],
-    missingSkills: ["Testing", "System design", "TypeScript depth"],
+    matchedSkills: ["Tín dụng tiêu dùng", "Giao tiếp cơ bản"],
+    missingSkills: ["Huy động vốn dài hạn", "Bảo hiểm"],
     status: "CV Screening",
     progress: 61,
-    yearsExperience: 4,
-    salaryExpectation: "$4,300",
-    aiRecommendation: "Consider for mid-level role, not current senior scope.",
-    strengths: ["Fast implementation", "Good CSS layout sense"],
-    weaknesses: ["Weak test coverage reasoning", "Shallow system design examples"],
-    riskFlags: ["Employment gap needs clarification"],
+    yearsExperience: 1,
+    salaryExpectation: "10,000,000 VND",
+    aiRecommendation: "Xem xét kỹ. Chỉ mạnh về vay tiêu dùng tín chấp nhỏ lẻ.",
+    strengths: [
+      { trait: "Kinh nghiệm mở rộng tệp khách hàng thực tế", evidence: "Tự khai thác 50 khách hàng mới tín dụng tiêu dùng trong 6 tháng." },
+      { trait: "Kinh nghiệm thị trường", evidence: "Phụ trách khu vực vùng ven, thường xuyên chốt khách tại địa bàn." }
+    ],
+    weaknesses: [
+      { trait: "Thiếu kỹ năng tư vấn khách VIP", evidence: "Chưa từng tiếp xúc KH phân khúc tài sản > 5 tỷ." },
+      { trait: "Chưa có kinh nghiệm huy động sổ tiết kiệm", evidence: "Doanh số huy động gần như bằng 0 trong CV." }
+    ],
+    riskFlags: ["Chuyển việc 3 lần trong 1 năm qua"],
     reasoning: [
-      "CV uses many keywords but limited measurable outcomes.",
-      "Test misses cases around validation and failure states.",
-      "Interview examples are implementation-heavy, less strategic.",
+      "Chỉ làm việc tại công ty tài chính, chưa có kinh nghiệm ngân hàng chính thống.",
+      "Bài test kiến thức ngân hàng bán lẻ ở mức trung bình.",
+      "Phù hợp với nhóm khách hàng mass hơn là phân khúc cao cấp.",
     ],
   },
   {
     id: "cand-004",
-    name: "Pham Minh Duc",
+    name: "Phạm Minh Đức",
     email: "duc.pham@example.com",
-    position: "Senior Frontend Engineer",
+    position: "Chuyên viên Quan hệ Khách hàng Cá nhân",
     source: "Website",
     cvScore: 82,
+    score_breakdown: {
+      experience: { score: 30, max: 30, reason: "Kinh nghiệm 4 năm quản lý tài sản" },
+      hard_skills: { score: 35, max: 50, reason: "Chỉ làm huy động, đầu tư. Không có kinh nghiệm cho vay." },
+      soft_skills: { score: 17, max: 20, reason: "Tác phong chững chạc, tạo niềm tin." }
+    },
+    action_recommendation: "auto_shortlist",
     testScore: 79,
     interviewScore: 80,
     totalScore: 80,
-    matchedSkills: ["React", "Recharts", "Collaboration"],
-    missingSkills: ["Security flows"],
+    matchedSkills: ["Huy động vốn", "Đầu tư", "Phân tích tài chính"],
+    missingSkills: ["Vay thế chấp doanh nghiệp siêu nhỏ"],
     status: "Test Sent",
     progress: 74,
-    yearsExperience: 5,
-    salaryExpectation: "$4,900",
-    aiRecommendation: "Keep in pipeline; ask focused security-flow questions.",
-    strengths: ["Dashboard delivery experience", "Good stakeholder communication"],
-    weaknesses: ["Needs stronger auth and security examples"],
+    yearsExperience: 4,
+    salaryExpectation: "18,000,000 VND",
+    aiRecommendation: "Giữ lại Pipeline. Điểm huy động vốn cao, tập trung phỏng vấn kỹ năng chốt sale.",
+    strengths: [
+      { trait: "Kinh nghiệm tư vấn trái phiếu và quỹ đầu tư", evidence: "Làm việc 4 năm tại công ty chứng khoán, quản lý tài sản khách hàng." },
+      { trait: "Khả năng phân tích tài chính", evidence: "Có chứng chỉ CFA Level 1." }
+    ],
+    weaknesses: [
+      { trait: "Thiếu kinh nghiệm cho vay", evidence: "Chưa từng làm hồ sơ vay vốn tín chấp hay thế chấp." }
+    ],
     riskFlags: [],
     reasoning: [
-      "Dashboard portfolio is relevant to HR manager workflows.",
-      "Assessment is solid but misses edge cases in protected actions.",
-      "Interview score can improve with clearer prioritization.",
+      "Từng làm môi giới chứng khoán chuyển sang.",
+      "Có tư duy tốt về quản lý gia sản (Wealth Management).",
+      "Bài test chưa làm xong phần quy trình giải ngân.",
     ],
   },
   {
     id: "cand-005",
-    name: "Hoang Thi Em",
+    name: "Hoàng Thị Em",
     email: "em.hoang@example.com",
-    position: "Senior Frontend Engineer",
+    position: "Chuyên viên Quan hệ Khách hàng Cá nhân",
     source: "LinkedIn",
-    cvScore: 65,
-    testScore: 63,
+    cvScore: 55,
+    score_breakdown: {
+      experience: { score: 0, max: 30, reason: "Sinh viên mới ra trường, 0 kinh nghiệm." },
+      hard_skills: { score: 40, max: 50, reason: "Trái ngành, không có kỹ năng ngân hàng." },
+      soft_skills: { score: 15, max: 20, reason: "Trình bày rõ ràng nhưng chưa thể hiện kỹ năng sale." }
+    },
+    action_recommendation: "auto_reject",
+    testScore: 40,
     interviewScore: 0,
-    totalScore: 64,
-    matchedSkills: ["UI polish"],
-    missingSkills: ["React architecture", "TypeScript", "Testing"],
+    totalScore: 45,
+    matchedSkills: ["Tin học văn phòng"],
+    missingSkills: ["Nghiệp vụ Tín dụng", "Kiến thức Ngân hàng", "Giao tiếp bán hàng"],
     status: "Rejected",
     progress: 100,
-    yearsExperience: 3,
-    salaryExpectation: "$3,800",
-    aiRecommendation: "Reject for this role; potential fit for junior product UI track.",
-    strengths: ["Visual detail", "Quick prototyping"],
-    weaknesses: ["Insufficient senior-level architecture evidence"],
-    riskFlags: ["Portfolio projects not verifiable"],
+    yearsExperience: 0,
+    salaryExpectation: "8,000,000 VND",
+    aiRecommendation: "Loại hồ sơ. Trái ngành và không có kinh nghiệm liên quan.",
+    strengths: [
+      { trait: "Sử dụng tốt tin học văn phòng", evidence: "Có chứng chỉ MOS Excel 900 điểm." }
+    ],
+    weaknesses: [
+      { trait: "Không có kinh nghiệm Sale", evidence: "Chỉ tham gia CLB trường, không có kinh nghiệm thực tế." },
+      { trait: "Trái ngành", evidence: "Tốt nghiệp ngành Văn học." }
+    ],
+    riskFlags: ["Hoàn toàn không có bằng cấp tài chính kinh tế"],
     reasoning: [
-      "Core senior requirements are not strongly evidenced.",
-      "Test results fall below campaign threshold.",
-      "Missing interview score because candidate did not complete the stage.",
+      "Sinh viên mới tốt nghiệp ngành kỹ thuật, không có kinh nghiệm sales/ngân hàng.",
+      "Điểm bài test kiến thức quá thấp (40/100).",
+      "Hệ thống tự động từ chối.",
     ],
   },
 ]

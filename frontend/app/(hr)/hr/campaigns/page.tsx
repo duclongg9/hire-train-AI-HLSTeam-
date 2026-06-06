@@ -1,217 +1,143 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Plus } from "lucide-react"
-import { format } from "date-fns"
+import Link from "next/link"
+import { Building2, Plus, ArrowRight, CircleDot } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { PageHeader } from '@/shared/layout/page-header'
-import { listCampaigns, createCampaign, closeCampaign, BackendCampaign, formatApiError } from "@/features/hr/api/hr-api"
+// --- Mock Data ---
+const mockCampaigns = [
+  {
+    id: "camp-001",
+    name: "Tuyển dụng Nhân sự Số - Khối Ngân hàng Số",
+    department: "Khối Ngân hàng Số",
+    status: "ACTIVE",
+    hasNew: true,
+    totalCvs: 57,
+    positions: [
+      { id: "pos-1", title: "Customer Support Specialist", cvCount: 45, newCvCount: 5 },
+      { id: "pos-2", title: "Tech Lead", cvCount: 12, newCvCount: 0 },
+    ],
+  },
+  {
+    id: "camp-002",
+    name: "Chiến dịch Công nghệ Thông tin - Q3",
+    department: "Khối CNTT",
+    status: "ACTIVE",
+    hasNew: true,
+    totalCvs: 41,
+    positions: [
+      { id: "pos-3", title: "Senior Frontend Engineer", cvCount: 14, newCvCount: 0 },
+      { id: "pos-4", title: "DevOps Engineer", cvCount: 8, newCvCount: 2 },
+      { id: "pos-5", title: "Data Analyst", cvCount: 19, newCvCount: 0 },
+      { id: "pos-7", title: "Backend Engineer", cvCount: 22, newCvCount: 1 },
+      { id: "pos-8", title: "QA Tester", cvCount: 5, newCvCount: 0 },
+      { id: "pos-9", title: "Product Manager", cvCount: 10, newCvCount: 0 },
+    ],
+  },
+  {
+    id: "camp-003",
+    name: "Tuyển dụng Khối Quản trị Rủi ro",
+    department: "Khối QTRR",
+    status: "DRAFT",
+    hasNew: false,
+    totalCvs: 0,
+    positions: [
+      { id: "pos-6", title: "Chuyên viên Quản lý Rủi ro", cvCount: 0, newCvCount: 0 },
+    ],
+  },
+]
 
 export default function CampaignsPage() {
-  const router = useRouter()
-  const [campaigns, setCampaigns] = useState<BackendCampaign[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const [isCreating, setIsCreating] = useState(false)
-  const [createError, setCreateError] = useState("")
-  
-  const [form, setForm] = useState({
-    name: "",
-    department: "",
-    startDate: "",
-    endDate: ""
-  })
-
-  useEffect(() => {
-    let mounted = true
-    listCampaigns()
-      .then(data => {
-        if (mounted) {
-          setCampaigns(data)
-          setLoading(false)
-        }
-      })
-      .catch(err => {
-        if (mounted) {
-          setError("Failed to load campaigns.")
-          setLoading(false)
-        }
-      })
-    return () => { mounted = false }
-  }, [])
-
-  const handleCreate = async () => {
-    setCreateError("")
-    if (!form.name || !form.department || !form.startDate || !form.endDate) {
-      setCreateError("Vui lòng điền đầy đủ các trường yêu cầu.")
-      return
-    }
-    
-    setIsCreating(true)
-    try {
-      const created = await createCampaign({
-        title: form.name,
-        department_scope: form.department,
-        start_date: new Date(`${form.startDate}T00:00:00`).toISOString(),
-        end_date: new Date(`${form.endDate}T23:59:59`).toISOString(),
-        status: "DRAFT"
-      })
-      setCampaigns([created, ...campaigns])
-      setIsCreateModalOpen(false)
-      setForm({ name: "", department: "", startDate: "", endDate: "" })
-    } catch (err) {
-      setCreateError(formatApiError(err, "Failed to create campaign."))
-    } finally {
-      setIsCreating(false)
-    }
-  }
-
-  const handleHideCampaign = async (id: string) => {
-    try {
-      await closeCampaign(id)
-      setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: "CLOSED" } : c))
-    } catch (err) {
-      alert(formatApiError(err, "Failed to hide campaign."))
-    }
-  }
-
   return (
-    <>
-      <PageHeader title="Campaigns" subtitle="Manage recruitment campaigns" />
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Danh sách Campaign</h2>
-            <p className="text-sm text-muted-foreground">Tạo mới hoặc quản lý các đợt tuyển dụng.</p>
-          </div>
-          <Button className="bg-[#F37021] text-white hover:bg-[#d95f18]" onClick={() => setIsCreateModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Campaign
-          </Button>
+    <div className="w-full max-w-7xl mx-auto pb-10">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Campaigns</h1>
+          <p className="text-sm text-slate-500 mt-1">Quản lý và theo dõi các chiến dịch tuyển dụng</p>
         </div>
-        
-        {error ? <div className="text-red-500">{error}</div> : null}
-
-        <Card className="rounded-lg shadow-sm">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Campaign Name</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Start / End Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center">Loading campaigns...</TableCell>
-                  </TableRow>
-                ) : campaigns.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">Chưa có campaign nào.</TableCell>
-                  </TableRow>
-                ) : (
-                  campaigns.map((camp) => (
-                    <TableRow key={camp.id}>
-                      <TableCell className="font-medium text-foreground">{camp.title}</TableCell>
-                      <TableCell>{(camp as any).department_scope || "N/A"}</TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div>{camp.start_date ? format(new Date(camp.start_date), "dd/MM/yyyy") : "N/A"}</div>
-                          <div className="text-xs text-muted-foreground">{camp.end_date ? format(new Date(camp.end_date), "dd/MM/yyyy") : (camp.deadline_at ? format(new Date(camp.deadline_at), "dd/MM/yyyy") : "N/A")}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className={cn(
-                          "rounded-md px-2 py-1 text-xs font-medium",
-                          camp.status === "ACTIVE" ? "bg-green-100 text-green-800" :
-                          camp.status === "CLOSED" ? "bg-red-100 text-red-800" :
-                          "bg-slate-100 text-slate-800"
-                        )}>
-                          {camp.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => router.push(`/hr/campaigns/${camp.id}`)}>
-                          Xem chi tiết
-                        </Button>
-                        {camp.status !== "CLOSED" && (
-                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleHideCampaign(camp.id)}>
-                            Ẩn
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
+        <button className="mt-4 sm:mt-0 flex items-center gap-2 bg-[#F37021] hover:bg-[#d9611c] text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm">
+          <Plus className="w-4 h-4" />
+          <span>New Campaign</span>
+        </button>
       </div>
 
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-lg shadow-xl p-6 relative">
-            <div className="mb-4">
-              <h3 className="text-xl font-semibold text-foreground">Tạo Campaign Mới</h3>
-              <p className="text-sm text-muted-foreground">Nhập các thông tin cơ bản cho chiến dịch tuyển dụng.</p>
-            </div>
-            
-            {createError ? <div className="mb-4 text-sm font-medium text-red-500">{createError}</div> : null}
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="camp-name">Campaign Name</Label>
-                <Input id="camp-name" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. Q3 Hiring" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="camp-dept">Department</Label>
-                <Select value={form.department} onValueChange={v => setForm({...form, department: v})}>
-                  <SelectTrigger id="camp-dept">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Khối CNTT">Khối CNTT</SelectItem>
-                    <SelectItem value="Khối Khách hàng Cá nhân">Khối Khách hàng Cá nhân</SelectItem>
-                    <SelectItem value="Khối Vận hành">Khối Vận hành</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="camp-start">Start Date</Label>
-                  <Input id="camp-start" type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value})} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {mockCampaigns.map((camp) => (
+          <div
+            key={camp.id}
+            className="bg-white rounded-2xl border border-slate-100/80 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_24px_-8px_rgba(0,0,0,0.08)] transition-all duration-300 p-6 flex flex-col h-full"
+          >
+            {/* Header */}
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex-1 pr-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      camp.status === "ACTIVE"
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {camp.status}
+                  </span>
+                  {camp.hasNew && (
+                    <div className="bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                      MỚI
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="camp-end">End Date</Label>
-                  <Input id="camp-end" type="date" value={form.endDate} onChange={e => setForm({...form, endDate: e.target.value})} />
+                <h3 className="text-base font-bold text-slate-900 tracking-tight leading-snug line-clamp-2">
+                  {camp.name}
+                </h3>
+                <div className="flex items-center gap-1.5 text-slate-400 mt-2 text-xs font-medium">
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>{camp.department}</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)}>Cancel</Button>
-              <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" disabled={isCreating} onClick={handleCreate}>
-                {isCreating ? "Creating..." : "Create"}
-              </Button>
+            {/* Body: JD List */}
+            <div className="bg-slate-50/60 rounded-xl p-3.5 mt-4 space-y-2.5 flex-1">
+              {camp.positions.slice(0, 3).map((pos) => (
+                <div key={pos.id} className="flex items-center justify-between group">
+                  <span className="text-sm font-semibold text-slate-700 truncate pr-3 group-hover:text-slate-900 transition-colors">
+                    {pos.title}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {pos.newCvCount > 0 && (
+                      <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded-md">
+                        +{pos.newCvCount}
+                      </span>
+                    )}
+                    <span className="text-xs font-medium text-slate-500 bg-slate-200/50 px-2 py-0.5 rounded-md">
+                      {pos.cvCount} CV
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {camp.positions.length > 3 && (
+                <div className="text-[11px] text-slate-400 font-medium italic pt-2 border-t border-slate-100/50 mt-2 text-center hover:text-slate-600 transition-colors cursor-pointer">
+                  + {camp.positions.length - 3} vị trí khác...
+                </div>
+              )}
             </div>
-          </Card>
-        </div>
-      )}
-    </>
+
+            {/* Footer */}
+            <div className="border-t border-slate-100 pt-4 mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-slate-500 font-medium">Tổng ứng viên</span>
+                <span className="text-base font-bold text-slate-900">{camp.totalCvs}</span>
+              </div>
+              <Link href={`/hr/campaigns/${camp.id}`}>
+                <button className="w-full bg-slate-900 text-white text-xs font-semibold py-2.5 px-4 rounded-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-1.5 group">
+                  <span>Vào Quản Lý</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

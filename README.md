@@ -69,7 +69,7 @@ The backend handles AI processing (JD parsing, CV scoring) via Google Gemini.
 
 ## How to Test
 
-1. Open `http://localhost:3000/hr-portal`
+1. Open `http://localhost:3000/hr`
 2. Create a **New Campaign** by entering a title and clicking the create button.
 3. Upload a JD (PDF or DOCX) to let the AI generate a scoring Rubric.
 4. Go to the Campaign Details, upload candidate CVs, and click **Score Selected** to let Gemini evaluate them based on the generated Rubric.
