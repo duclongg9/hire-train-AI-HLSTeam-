@@ -43,7 +43,8 @@ class Settings(BaseSettings):
     # AWS Configuration
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "ap-southeast-1"
+    AWS_SESSION_TOKEN: str = ""
+    AWS_REGION: str = "us-east-1"
     AWS_S3_BUCKET_NAME: str = "hiretrain-cv-bucket"
 
     TOKEN_SECRET: str = "development-token-secret-change-me"
