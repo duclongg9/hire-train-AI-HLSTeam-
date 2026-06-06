@@ -374,7 +374,7 @@ export function publishTestQuestions(campaignId: string) {
   })
 }
 
-export function getPublicJob(campaignId: string) {
+export function getPublicJob(campaignId: string | undefined) {
   return request<BackendCampaign>(`/public/jobs/${campaignId}`)
 }
 
