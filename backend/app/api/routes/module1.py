@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import logging
 import io
 import zipfile
 import pdfplumber
@@ -33,6 +34,7 @@ from app.services.module1_service import Module1Service, get_module1_service
 from app.core.errors import AppError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def service_dep() -> Module1Service:
@@ -513,3 +515,77 @@ def get_transcribe_presigned_url(
         return {"url": url, "expires_in_seconds": 300}
     except Exception as e:
         raise AppError(500, f"Failed to generate presigned URL: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Text-to-Speech endpoint — mirrors EdgeTts.cs pattern
+# Voice: vi-VN-NamMinhNeural (configurable via request body)
+# Returns: audio/mpeg (MP3) stream synthesised by edge-tts
+# ---------------------------------------------------------------------------
+
+class TtsRequest(BaseModel):
+    text: str
+    voice: str = "vi-VN-NamMinhNeural"
+    rate: str = "+0%"
+    volume: str = "+0%"
+
+
+@router.post("/tts")
+async def text_to_speech(payload: TtsRequest):
+    """
+    Synthesise Vietnamese speech via Microsoft Edge TTS.
+    Mirrors the EdgeTts.cs SynthesizeAsync pattern:
+      - Collects all audio into a MemoryStream (io.BytesIO) BEFORE responding
+      - Returns the complete MP3 bytes as audio/mpeg
+      - Properly handles NoAudioReceived with retries (like the C# Stop/retry pattern)
+    """
+    import edge_tts
+    from fastapi.responses import Response
+    import io
+
+    text = (
+        payload.text
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace('"', "'")
+        .strip()
+    )
+
+    if not text:
+        raise AppError(400, "text must not be empty")
+
+    async def synthesize(voice: str, rate: str, volume: str) -> bytes | None:
+        """Mirrors EdgeTts.cs SynthesizeAsync — collect into BytesIO, return bytes or None."""
+        try:
+            communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, volume=volume)
+            buf = io.BytesIO()
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    buf.write(chunk["data"])
+            data = buf.getvalue()
+            return data if data else None
+        except (NoAudioReceived, Exception):
+            return None
+
+    # Attempt 1: requested voice + rate/volume
+    audio = await synthesize(payload.voice, payload.rate, payload.volume)
+
+    # Attempt 2: same voice, reset rate/volume to defaults (avoids format issues)
+    if audio is None:
+        audio = await synthesize(payload.voice, "+0%", "+0%")
+
+    # Attempt 3: fallback to a known-stable voice
+    if audio is None:
+        audio = await synthesize("vi-VN-HoaiMyNeural", "+0%", "+0%")
+
+    if not audio:
+        raise AppError(500, "Edge TTS returned no audio after retries. Check network or voice parameters.")
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Length": str(len(audio)),
+        },
+    )
