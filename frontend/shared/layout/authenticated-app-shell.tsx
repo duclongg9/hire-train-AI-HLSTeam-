@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   BarChart3,
   Brain,
+  Building2,
   ClipboardList,
   FileQuestion,
   FileText,
@@ -26,6 +27,7 @@ type NavItem = { href: string; label: string; icon: LucideIcon }
 interface AuthShellState {
   role: MockRole
   activeCampaignId: string
+  activePositionId: string
   navItems: NavItem[]
 }
 
@@ -56,9 +58,7 @@ const hrBaseNav: NavItem[] = [
 ]
 
 const hrCampaignNav = [
-  { segment: "rubric", label: "CV Rubric", icon: ListChecks },
-  { segment: "interview", label: "Interview Rubric", icon: ClipboardList },
-  { segment: "test-review", label: "Test Review", icon: FileQuestion },
+  { segment: "", label: "Overview", icon: Building2 },
   { segment: "leaderboard", label: "Leaderboard", icon: BarChart3 },
 ]
 
@@ -69,7 +69,9 @@ function useAuthShell() {
 }
 
 function isNavActive(pathname: string, href: string) {
-  return pathname === href || (href !== "/hr" && pathname.startsWith(`${href}/`))
+  // Strip query parameters from href for comparison
+  const basePath = href.split('?')[0]
+  return pathname === basePath || (basePath !== "/hr" && pathname.startsWith(`${basePath}/`))
 }
 
 function AuthShellProvider({
@@ -82,6 +84,7 @@ function AuthShellProvider({
   const pathname = usePathname()
   const router = useRouter()
   const [activeCampaignId, setActiveCampaignIdState] = useState("")
+  const [activePositionId, setActivePositionIdState] = useState("")
 
   useEffect(() => {
     const storedRole = getMockRole()
@@ -91,34 +94,47 @@ function AuthShellProvider({
     }
 
     if (role !== "HR Manager") return
+    
+    // Parse campaign
     const routeCampaignId = pathname.match(/\/hr\/campaigns\/([^/]+)/)?.[1]
     const nextCampaignId = routeCampaignId || getActiveCampaignId()
     setActiveCampaignIdState(nextCampaignId)
     if (routeCampaignId) setActiveCampaignId(routeCampaignId)
+
+    // Parse position
+    const params = new URLSearchParams(window.location.search)
+    const queryPositionId = params.get("positionId") || pathname.match(/\/position\/([^/]+)/)?.[1]
+    const storedPositionId = window.localStorage.getItem("activePositionId") || ""
+    const nextPositionId = queryPositionId || storedPositionId
+    setActivePositionIdState(nextPositionId)
+    if (queryPositionId) window.localStorage.setItem("activePositionId", queryPositionId)
+
   }, [pathname, role, router])
 
   const navItems = useMemo(() => {
     if (role === "Admin") return adminNav
     const campaignItems = activeCampaignId
       ? hrCampaignNav.map((item) => ({
-          href: `/hr/campaigns/${activeCampaignId}/${item.segment}`,
+          href: `/hr/campaigns/${activeCampaignId}/${item.segment}${activePositionId ? `?positionId=${activePositionId}` : ""}`,
           label: item.label,
           icon: item.icon,
         }))
       : []
     return [...hrBaseNav, ...campaignItems]
-  }, [activeCampaignId, role])
+  }, [activeCampaignId, activePositionId, role])
 
   const value = useMemo<AuthShellContextValue>(
     () => ({
       state: {
         role,
         activeCampaignId,
+        activePositionId,
         navItems,
       },
       actions: {
         signOut: () => {
           clearMockSession()
+          window.localStorage.removeItem("activePositionId")
           router.push("/login")
         },
       },
@@ -126,7 +142,7 @@ function AuthShellProvider({
         initials: role === "Admin" ? "AD" : "HR",
       },
     }),
-    [activeCampaignId, navItems, role, router],
+    [activeCampaignId, activePositionId, navItems, role, router],
   )
 
   return <AuthShellContext value={value}>{children}</AuthShellContext>
