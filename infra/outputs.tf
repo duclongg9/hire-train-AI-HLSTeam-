@@ -28,6 +28,6 @@ output "ec2_private_key" {
   sensitive = true
 }
 
-output "test_instance_id" { value = module.test_ec2.instance_id }
-output "test_public_ip" { value = module.test_ec2.public_ip }
+# output "test_instance_id" { value = module.test_ec2.instance_id }
+# output "test_public_ip" { value = module.test_ec2.public_ip }
 # Root module — output declarations defined in task 12

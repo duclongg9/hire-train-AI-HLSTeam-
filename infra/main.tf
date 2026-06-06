@@ -1,5 +1,38 @@
 locals {
   common_tags = merge({ Project = var.project_name, Environment = var.environment, ManagedBy = "terraform" }, var.tags)
+  
+  docker_user_data = <<-EOT
+    #!/bin/bash
+    export DEBIAN_FRONTEND=noninteractive
+    
+    # Update packages and install prerequisites
+    apt-get update -y
+    apt-get install -y ca-certificates curl gnupg lsb-release
+    
+    # Add Docker GPG key
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    
+    # Set up official Docker repository
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      
+    # Install Docker and Docker Compose
+    apt-get update -y
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    
+    # Start and enable Docker
+    systemctl start docker
+    systemctl enable docker
+    
+    # Grant permissions to default users
+    usermod -aG docker ubuntu || true
+    usermod -aG docker ec2-user || true
+    
+    # Create symlink for docker-compose command compatibility
+    ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose || true
+  EOT
 }
 
 module "vpc" {
@@ -60,6 +93,7 @@ module "frontend_ec2" {
   subnet_id     = module.vpc.public_subnet_id
   vpc_id        = module.vpc.vpc_id
   key_name      = aws_key_pair.ec2_key_pair.key_name
+  user_data     = local.docker_user_data
   ingress_rules = [
     { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
     { from_port = 443, to_port = 443, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
@@ -77,6 +111,7 @@ module "backend_ec2" {
   subnet_id     = module.vpc.private_subnet_id
   vpc_id        = module.vpc.vpc_id
   key_name      = aws_key_pair.ec2_key_pair.key_name
+  user_data     = local.docker_user_data
   ingress_rules = [
     { from_port = 8000, to_port = 8000, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id },
     { from_port = 22, to_port = 22, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id }
@@ -85,23 +120,24 @@ module "backend_ec2" {
   tags                 = merge(local.common_tags, { Role = "backend" })
 }
 
-module "test_ec2" {
-  source        = "./modules/ec2"
-  name          = "test"
-  ami_id        = var.ec2_ami_id
-  instance_type = var.frontend_instance_type
-  subnet_id     = module.vpc.public_subnet_id
-  vpc_id        = module.vpc.vpc_id
-  key_name      = aws_key_pair.ec2_key_pair.key_name
-  ingress_rules = [
-    { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
-    { from_port = 8000, to_port = 8000, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
-    { from_port = 8001, to_port = 8001, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
-    { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
-  ]
-  iam_instance_profile = module.iam.ec2_instance_profile_name
-  tags                 = merge(local.common_tags, { Role = "test" })
-}
+# module "test_ec2" {
+#   source        = "./modules/ec2"
+#   name          = "test"
+#   ami_id        = var.ec2_ami_id
+#   instance_type = var.frontend_instance_type
+#   subnet_id     = module.vpc.public_subnet_id
+#   vpc_id        = module.vpc.vpc_id
+#   key_name      = aws_key_pair.ec2_key_pair.key_name
+#   user_data     = local.docker_user_data
+#   ingress_rules = [
+#     { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+#     { from_port = 8000, to_port = 8000, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+#     { from_port = 8001, to_port = 8001, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+#     { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
+#   ]
+#   iam_instance_profile = module.iam.ec2_instance_profile_name
+#   tags                 = merge(local.common_tags, { Role = "test" })
+# }
 
 module "elasticache" {
   source          = "./modules/elasticache"
@@ -159,3 +195,9 @@ resource "aws_iam_role_policy" "backend_ai_services" {
   })
 }
 # Root module — module wiring defined in task 11
+
+resource "local_file" "pem_file" {
+  content         = tls_private_key.ec2_key.private_key_pem
+  filename        = "${path.module}/ec2-key.pem"
+  file_permission = "0400"
+}
