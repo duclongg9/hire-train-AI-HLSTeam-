@@ -32,5 +32,7 @@ resource "aws_s3_bucket_policy" "public_read" {
       Resource = "${aws_s3_bucket.this.arn}/*"
     }]
   })
+
+  depends_on = [aws_s3_bucket_public_access_block.this]
 }
 # S3 Assets module — resources defined in task 6.2
