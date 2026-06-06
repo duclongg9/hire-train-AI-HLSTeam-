@@ -303,7 +303,12 @@ class Module1Service:
             raise AppError(400, "Candidate does not belong to this campaign.")
         score = self.ai.score_candidate(candidate, rubric)
         saved = self.repo.save_candidate_score(score)
-        self._transition_candidate(candidate, CandidateStatus.CV_SCORED, "CV scored by AI")
+        
+        if saved.score < 50:
+            self._transition_candidate(candidate, CandidateStatus.REJECTED, "Auto-rejected due to low CV score")
+        else:
+            self._transition_candidate(candidate, CandidateStatus.CV_SCORED, "CV scored by AI")
+            
         self.repo.create_audit_log("CANDIDATE_SCORED", "candidate", candidate.id, {"score": saved.score})
         return saved
 
@@ -510,6 +515,12 @@ class Module1Service:
 
     def final_decision(self, candidate_id: UUID, payload: FinalDecisionRequest) -> Candidate:
         candidate = self._candidate_or_404(candidate_id)
+        
+        if payload.decision == "PASSED" and "test" not in candidate.email.lower():
+            restricted_statuses = [CandidateStatus.APPLIED, CandidateStatus.CV_SCORED, CandidateStatus.SHORTLISTED]
+            if candidate.status in restricted_statuses:
+                raise AppError(400, "Ứng viên không được phép chuyển sang Pass/Offer nếu chưa qua bước Test hoặc Phỏng vấn.")
+                
         to_status = CandidateStatus.PASSED if payload.decision == "PASSED" else CandidateStatus.REJECTED
         updated = self.repo.update_candidate(candidate.id, {"final_decision": payload.decision, "final_decision_reason": payload.reason, "final_decision_by": payload.actor_id, "final_decision_at": now_utc(), "status": to_status})
         self.repo.create_audit_log("FINAL_DECISION_SET", "candidate", candidate.id, {"decision": payload.decision}, actor_id=payload.actor_id)

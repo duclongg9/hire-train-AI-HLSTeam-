@@ -103,6 +103,7 @@ function toCandidateStatus(status: string): CandidateStatus {
 }
 
 function cvSummary(candidate: Candidate) {
+  if (candidate.status === "Applied") return "Waiting for AI..."
   const skills = candidate.matchedSkills.slice(0, 3).join(", ")
   const missing = candidate.missingSkills[0] ? ` Missing: ${candidate.missingSkills[0]}.` : ""
   return `${candidate.yearsExperience} years experience. Matches: ${skills || "under review"}.${missing}`
@@ -919,9 +920,13 @@ function CandidateDrawer({
 function CandidateRankingTable({
   candidates,
   onViewMore,
+  onQuickAction,
+  busyAction,
 }: {
   candidates: Candidate[]
   onViewMore: (candidate: Candidate) => void
+  onQuickAction?: (candidate: Candidate, actionName: string, actionFn: () => Promise<string>) => void
+  busyAction?: string | null
 }) {
   if (candidates.length === 0) {
     return <EmptyState title="No candidates" description="Candidates will appear here after CV submission or backend scoring." />
@@ -970,9 +975,43 @@ function CandidateRankingTable({
                   <StatusPill tone={candidateStatusTone(candidate.status)}>{candidate.status}</StatusPill>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button variant="outline" size="sm" onClick={() => onViewMore(candidate)}>
-                    View more
-                  </Button>
+                  <div className="flex justify-end gap-2">
+                    {candidate.status === "CV Screening" && onQuickAction && (
+                      <Button 
+                        size="sm" 
+                        className="bg-[#0033A0] text-white hover:bg-[#00256f]"
+                        disabled={Boolean(busyAction)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onQuickAction(candidate, "Invite test", async () => {
+                            const link = await inviteCandidateToTest(candidate.id)
+                            return `Đã gửi bài Test: ${link.url}`
+                          })
+                        }}
+                      >
+                        Gửi bài Test
+                      </Button>
+                    )}
+                    {(candidate.status === "Test Sent" || candidate.status === "Interview") && onQuickAction && (
+                      <Button 
+                        size="sm" 
+                        className="bg-[#0033A0] text-white hover:bg-[#00256f]"
+                        disabled={Boolean(busyAction)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onQuickAction(candidate, "Invite interview", async () => {
+                            const link = await inviteCandidateToInterview(candidate.id)
+                            return `Đã tạo phòng phỏng vấn: ${link.url}`
+                          })
+                        }}
+                      >
+                        Tạo phòng phỏng vấn ảo
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => onViewMore(candidate)}>
+                      {candidate.status === "CV Screening" || candidate.status === "Test Sent" || candidate.status === "Interview" ? "..." : "View more"}
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -993,6 +1032,20 @@ export function LeaderboardScreen() {
   const [drawerCandidate, setDrawerCandidate] = useState<Candidate | null>(null)
   const [authOpen, setAuthOpen] = useState(false)
   const [message, setMessage] = useState("")
+  const [busyAction, setBusyAction] = useState<string | null>(null)
+
+  const handleQuickAction = async (candidate: Candidate, actionName: string, actionFn: () => Promise<string>) => {
+    setBusyAction(actionName)
+    setMessage("")
+    try {
+      const text = await actionFn()
+      setMessage(text)
+    } catch (error) {
+      setMessage(formatApiError(error, `${actionName} failed.`))
+    } finally {
+      setBusyAction(null)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -1097,7 +1150,7 @@ export function LeaderboardScreen() {
         </Card>
 
         <Card className="rounded-lg p-4 shadow-sm">
-          <CandidateRankingTable candidates={filtered} onViewMore={setDrawerCandidate} />
+          <CandidateRankingTable candidates={filtered} onViewMore={setDrawerCandidate} onQuickAction={handleQuickAction} busyAction={busyAction} />
         </Card>
       </div>
 
