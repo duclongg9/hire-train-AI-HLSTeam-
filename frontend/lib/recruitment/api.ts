@@ -1,4 +1,4 @@
-const DEFAULT_API_ORIGIN = "http://localhost:8001"
+const DEFAULT_API_ORIGIN = ""
 
 function normalizeApiOrigin(value?: string) {
   const raw = (value || DEFAULT_API_ORIGIN).replace(/\/$/, "")

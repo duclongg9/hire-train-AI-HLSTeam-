@@ -6,6 +6,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.BACKEND_PRIVATE_URL || 'http://localhost:8000'}/api/:path*`,
+      },
+    ];
+  },
 }
 
 export default nextConfig
