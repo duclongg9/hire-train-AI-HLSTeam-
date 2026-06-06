@@ -439,6 +439,7 @@ export function JobApplyPage() {
     workLocation: getJobBySlug(jobSlug).location,
   })
   const [cvFile, setCvFile] = useState<File | null>(null)
+  const [consent, setConsent] = useState(false)
   const [message, setMessage] = useState<{ type: "error" | "success" | "warning"; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -473,6 +474,10 @@ export function JobApplyPage() {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
     if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim() || !cvFile) {
       setMessage({ type: "error", text: "Vui lòng điền đầy đủ thông tin bắt buộc và tải CV." })
+      return
+    }
+    if (!consent) {
+      setMessage({ type: "error", text: "Bạn cần đồng ý với điều khoản thu thập dữ liệu để tiếp tục." })
       return
     }
     if (!emailValid) {
@@ -587,6 +592,18 @@ export function JobApplyPage() {
                 onChange={setCvFile}
               />
               <Textarea placeholder="Ghi chú thêm cho nhà tuyển dụng nếu cần" className="min-h-24" />
+              <div className="flex items-start gap-2 text-sm text-slate-600 rounded-lg bg-[#0033A0]/5 p-3">
+                <input 
+                  type="checkbox" 
+                  id="consent" 
+                  checked={consent} 
+                  onChange={(e) => setConsent(e.target.checked)} 
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-[#0033A0] focus:ring-[#0033A0]" 
+                />
+                <label htmlFor="consent" className="font-medium text-slate-700">
+                  Tôi đồng ý cho HireTrain AI thu thập và xử lý dữ liệu sinh trắc học/hồ sơ cho mục đích tuyển dụng
+                </label>
+              </div>
               {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Link href="/candidate/login">
@@ -595,7 +612,7 @@ export function JobApplyPage() {
                     Đăng nhập
                   </Button>
                 </Link>
-                <Button className="bg-[#c6203f] text-white hover:bg-[#a91935]" disabled={submitting} onClick={submit}>
+                <Button className="bg-[#c6203f] text-white hover:bg-[#a91935]" disabled={submitting || !consent} onClick={submit}>
                   <FileUp className="mr-2 h-4 w-4" />
                   {submitting ? "Đang gửi..." : "Gửi hồ sơ"}
                 </Button>

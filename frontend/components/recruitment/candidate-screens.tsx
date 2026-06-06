@@ -9,6 +9,7 @@ import {
   Briefcase,
   CheckCircle2,
   Clock,
+  Camera,
   FileText,
   Headphones,
   Mail,
@@ -37,6 +38,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
+import { Textarea } from "@/components/ui/textarea"
 
 function formatSeconds(seconds: number) {
   const minutes = Math.floor(seconds / 60)
@@ -470,6 +472,7 @@ export function WaitingRoomScreen() {
           <div className="mt-6 grid gap-3 md:grid-cols-2">
             {[
               ["Browser permission", ShieldCheck],
+              ["Camera access", Camera],
               ["Microphone access", Mic],
               ["Quiet environment", Headphones],
               ["Stable internet", Wifi],
@@ -538,6 +541,14 @@ export function InterviewRoomScreen() {
   const [networkOpen, setNetworkOpen] = useState(false)
   const [noiseOpen, setNoiseOpen] = useState(false)
   const [reminderDismissed, setReminderDismissed] = useState(false)
+  
+  const [transcript, setTranscript] = useState([
+    { speaker: "AI", text: "Walk me through a frontend decision where quality changed the outcome." },
+    { speaker: "Candidate", text: "I balanced performance, validation, and scanning speed for recruiters." },
+    { speaker: "AI", text: "What tradeoff did you reject?" },
+  ])
+  const [candidateDraft, setCandidateDraft] = useState("")
+  const [isEditing, setIsEditing] = useState(false)
 
   useEffect(() => {
     if (state === "completed" || state === "failed") return
@@ -548,7 +559,7 @@ export function InterviewRoomScreen() {
   }, [state])
 
   useEffect(() => {
-    if (state === "completed" || state === "failed") return
+    if (state === "completed" || state === "failed" || isEditing) return
     const states: InterviewLiveState[] = ["listening", "ai-speaking", "candidate-speaking"]
     const interval = window.setInterval(() => {
       setState((current) => {
@@ -557,7 +568,7 @@ export function InterviewRoomScreen() {
       })
     }, 4500)
     return () => window.clearInterval(interval)
-  }, [state])
+  }, [state, isEditing])
 
   const showReminder = timeLeft <= 120 && !reminderDismissed && state !== "completed" && state !== "failed"
 
@@ -624,12 +635,45 @@ export function InterviewRoomScreen() {
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[1fr_280px]">
-          <Card className="rounded-lg border-white/10 bg-white/5 p-4 text-white">
-            <h2 className="font-semibold">Live transcript</h2>
-            <div className="mt-3 space-y-2 text-sm text-white/70">
-              <p><span className="text-blue-300">AI:</span> Walk me through a frontend decision where quality changed the outcome.</p>
-              <p><span className="text-[#F37021]">Candidate:</span> I balanced performance, validation, and scanning speed for recruiters.</p>
-              <p><span className="text-blue-300">AI:</span> What tradeoff did you reject?</p>
+          <Card className="rounded-lg border-white/10 bg-white/5 p-4 text-white flex flex-col">
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="font-semibold">Live transcript</h2>
+              {state === "candidate-speaking" && !isEditing && (
+                <Button size="sm" variant="outline" className="h-7 text-xs bg-white/10 border-white/20 text-white" onClick={() => { setIsEditing(true); setCandidateDraft("I chose to prioritize..."); }}>
+                  Tạm dừng & Sửa Text
+                </Button>
+              )}
+            </div>
+            <div className="space-y-2 text-sm text-white/70 flex-1 overflow-y-auto">
+              {transcript.map((t, i) => (
+                <p key={i}><span className={t.speaker === "AI" ? "text-blue-300 font-medium" : "text-[#F37021] font-medium"}>{t.speaker}:</span> {t.text}</p>
+              ))}
+              
+              {state === "candidate-speaking" && (
+                isEditing ? (
+                  <div className="mt-3 flex flex-col gap-2 bg-black/20 p-3 rounded-lg border border-white/10">
+                    <span className="text-[#F37021] font-medium text-xs">Edit your response before submitting:</span>
+                    <Textarea 
+                      value={candidateDraft} 
+                      onChange={(e) => setCandidateDraft(e.target.value)}
+                      className="bg-slate-900 border-white/20 text-white min-h-[80px]"
+                    />
+                    <div className="flex justify-end gap-2 mt-1">
+                      <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="text-white/70 hover:text-white">Hủy</Button>
+                      <Button size="sm" className="bg-[#0033A0] text-white hover:bg-[#00256f]" onClick={() => {
+                        setTranscript([...transcript, { speaker: "Candidate", text: candidateDraft }])
+                        setIsEditing(false)
+                        setState("ai-speaking")
+                        setCandidateDraft("")
+                      }}>
+                        Nộp câu trả lời
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="animate-pulse"><span className="text-[#F37021] font-medium">Candidate:</span> ...</p>
+                )
+              )}
             </div>
           </Card>
           <Card className="rounded-lg border-white/10 bg-white/5 p-4 text-white">
