@@ -38,13 +38,49 @@ export interface BackendAuditLog {
 export interface BackendCampaign {
   id: string
   title: string
+  department_scope: string | null
   jd_text: string | null
   status: BackendCampaignStatus
   public_token: string | null
   created_by: string | null
+  start_date: string | null
+  end_date: string | null
   deadline_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface BackendPosition {
+  id: string
+  campaign_id: string
+  title: string
+  headcount: number
+  budget: string | null
+  jd_text: string | null
+  status: "DRAFT" | "PUBLISHED" | "CLOSED"
+  is_jd_complete: boolean
+  is_cv_rubric_complete: boolean
+  is_interview_complete: boolean
+  candidate_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface BackendInterviewRubricCriterion {
+  id: string
+  index: number
+  criterion: string
+  description: string
+  weight: number
+  tone: string
+  editing?: boolean
+}
+
+export interface BackendInterviewRubricGroup {
+  id: string
+  name: string
+  expanded: boolean
+  criteria: BackendInterviewRubricCriterion[]
 }
 
 export interface BackendRubricCriterion {

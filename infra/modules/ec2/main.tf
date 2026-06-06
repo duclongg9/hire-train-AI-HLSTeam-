@@ -63,6 +63,8 @@ resource "aws_instance" "this" {
 
   vpc_security_group_ids = [aws_security_group.this.id]
 
+  user_data = var.user_data != "" ? var.user_data : null
+
   # Conditionally attach an IAM instance profile only when the caller passes a
   # non-empty profile name. Backend EC2 uses this to pull from ECR via
   # PrivateLink without needing long-lived credentials.

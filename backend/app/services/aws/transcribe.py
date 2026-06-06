@@ -31,6 +31,10 @@ class TranscribeService:
             )
             credentials = session.get_credentials()
             if not credentials:
+                # If running locally in development or mock mode, return a dummy WebSocket URL
+                if settings.MOCK_MODE or settings.APP_ENV == "development":
+                    logger.warning("No AWS credentials found in development. Returning a mock presigned Transcribe URL.")
+                    return f"wss://transcribestreaming.{self.region}.amazonaws.com:8443/stream-transcription-websocket?mock=true&language-code={language_code}"
                 raise ValueError("No AWS Credentials found on the server.")
             
             frozen_credentials = credentials.get_frozen_credentials()

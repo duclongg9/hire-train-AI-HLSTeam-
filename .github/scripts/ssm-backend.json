@@ -1,0 +1,17 @@
+{
+  "commands": [
+    "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
+    "docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:backend-latest",
+
+    "aws secretsmanager get-secret-value --secret-id ${SECRETS_MANAGER_NAME} --query SecretString --output text > /home/ec2-user/backend_raw.json",
+
+    "python3 -c \"import json,sys; d=json.load(open('/home/ec2-user/backend_raw.json')); print(''.join(f'{k}={v}\\n' for k,v in d.items()), end='')\" > /home/ec2-user/backend.env",
+
+    "docker stop hls-backend || true",
+    "docker rm hls-backend || true",
+
+    "docker run -d --name hls-backend -p 8000:8000 --restart always --env-file /home/ec2-user/backend.env ${ECR_REGISTRY}/${ECR_REPOSITORY_NAME}:backend-latest",
+
+    "rm -f /home/ec2-user/backend_raw.json /home/ec2-user/backend.env"
+  ]
+}

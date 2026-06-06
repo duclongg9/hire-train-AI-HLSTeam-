@@ -31,7 +31,7 @@ jobs:
       - name: Build and Push Backend Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME || 'hls-backend' }}
           IMAGE_TAG: latest
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:backend-$IMAGE_TAG ./backend
@@ -41,7 +41,7 @@ jobs:
       - name: Build and Push Frontend Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME || 'hls-backend' }}
           IMAGE_TAG: latest
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG ./frontend
@@ -51,41 +51,89 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
-      # 3. Deploy Backend to EC2 Private via SSM Run Command
-      - name: Deploy Backend to Private EC2
+      # 3. Fetch SSH Private Key and query EC2 Public & Private IPs dynamically
+      - name: Prepare SSH Deployment Credentials
         run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --instance-ids "${{ secrets.BACKEND_INSTANCE_ID }}" \
-            --parameters 'commands=[
-              "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "docker pull ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:backend-latest",
-              "aws secretsmanager get-secret-value --secret-id ${{ secrets.SECRETS_MANAGER_NAME }} --query SecretString --output text > /home/ec2-user/backend_raw.json",
-              "python3 -c \"import json, sys; d=json.load(open(\x27/home/ec2-user/backend_raw.json\x27)); sys.stdout.write(\x27\x27.join(f\x27{k}={v}\\n\x27 for k,v in d.items()))\" > /home/ec2-user/backend.env",
-              "docker stop hls-backend || true",
-              "docker rm hls-backend || true",
-              "docker run -d --name hls-backend -p 8000:8000 --restart always --env-file /home/ec2-user/backend.env ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:backend-latest",
-              "rm -f /home/ec2-user/backend_raw.json /home/ec2-user/backend.env"
-            ]' \
-            --comment "Deploy Backend Container"
+          # 1. Get AWS Account ID and ECR registry URL dynamically
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com" >> $GITHUB_ENV
+          
+          # 2. Get static ECR Repository Name and Secrets Manager Name
+          echo "ECR_REPOSITORY_NAME=hls-backend" >> $GITHUB_ENV
+          echo "SECRETS_MANAGER_NAME=hire-train-AI-HLSTeam--backend-secrets" >> $GITHUB_ENV
+          
+          # 3. Get SSH Private Key from Secrets Manager
+          aws secretsmanager get-secret-value --secret-id "hire-train-AI-HLSTeam--ssh-key" --query SecretString --output text > private_key.pem
+          chmod 600 private_key.pem
+          
+          # 4. Find Frontend and Backend Instance IDs
+          FRONTEND_INSTANCE_ID="${{ secrets.FRONTEND_INSTANCE_ID }}"
+          if [ -z "$FRONTEND_INSTANCE_ID" ]; then
+            FRONTEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=frontend" "Name=tag:Project,Values=hire-train-AI-HLSTeam-" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+          fi
+          
+          BACKEND_INSTANCE_ID="${{ secrets.BACKEND_INSTANCE_ID }}"
+          if [ -z "$BACKEND_INSTANCE_ID" ]; then
+            BACKEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=backend" "Name=tag:Project,Values=hire-train-AI-HLSTeam-" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+          fi
+          
+          # 5. Query public and private IPs using the instance IDs
+          FRONTEND_IP=$(aws ec2 describe-instances --instance-ids "$FRONTEND_INSTANCE_ID" --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          BACKEND_IP=$(aws ec2 describe-instances --instance-ids "$BACKEND_INSTANCE_ID" --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          BACKEND_PRIVATE_IP=$(aws ec2 describe-instances --instance-ids "$BACKEND_INSTANCE_ID" --query "Reservations[0].Instances[0].PrivateIpAddress" --output text)
+          
+          echo "FRONTEND_IP=$FRONTEND_IP" >> $GITHUB_ENV
+          echo "BACKEND_IP=$BACKEND_IP" >> $GITHUB_ENV
+          echo "BACKEND_PRIVATE_IP=$BACKEND_PRIVATE_IP" >> $GITHUB_ENV
 
-      # 4. Deploy Frontend to EC2 Public via SSM Run Command
-      - name: Deploy Frontend to Public EC2
+      # 4. Deploy Backend via SSH
+      - name: Deploy Backend via SSH
+        env:
+          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+          ECR_REPOSITORY_NAME: ${{ env.ECR_REPOSITORY_NAME }}
+          SECRETS_MANAGER_NAME: ${{ env.SECRETS_MANAGER_NAME }}
         run: |
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --instance-ids "${{ secrets.FRONTEND_INSTANCE_ID }}" \
-            --parameters 'commands=[
-              "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
-              "docker pull ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:frontend-latest",
-              "docker stop hls-frontend || true",
-              "docker rm hls-frontend || true",
-              "docker run -d --name hls-frontend -p 80:3000 --restart always -e BACKEND_PRIVATE_URL=http://${{ secrets.BACKEND_PRIVATE_IP }}:8000 ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:frontend-latest"
-            ]' \
-            --comment "Deploy Frontend Container"
+          cat << 'EOF' > backend-deploy.sh
+          #!/bin/bash
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY_NAME:backend-latest
+          aws secretsmanager get-secret-value --secret-id $SECRETS_MANAGER_NAME --query SecretString --output text > /home/ubuntu/backend_raw.json
+          python3 -c "import json,sys; d=json.load(open('/home/ubuntu/backend_raw.json')); print(''.join(f'{k}={v}\n' for k,v in d.items()), end='')" > /home/ubuntu/backend.env
+          docker stop hls-backend || true
+          docker rm hls-backend || true
+          docker run -d --name hls-backend -p 8000:8000 --restart always --env-file /home/ubuntu/backend.env $ECR_REGISTRY/$ECR_REPOSITORY_NAME:backend-latest
+          rm -f /home/ubuntu/backend_raw.json /home/ubuntu/backend.env
+          EOF
+          chmod +x backend-deploy.sh
+          
+          scp -o StrictHostKeyChecking=no -i private_key.pem backend-deploy.sh ubuntu@${{ env.BACKEND_IP }}:/home/ubuntu/backend-deploy.sh
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@${{ env.BACKEND_IP }} "ECR_REGISTRY=$ECR_REGISTRY ECR_REPOSITORY_NAME=$ECR_REPOSITORY_NAME SECRETS_MANAGER_NAME=$SECRETS_MANAGER_NAME /home/ubuntu/backend-deploy.sh && rm -f /home/ubuntu/backend-deploy.sh"
+
+      # 5. Deploy Frontend via SSH
+      - name: Deploy Frontend via SSH
+        env:
+          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
+          ECR_REPOSITORY_NAME: ${{ env.ECR_REPOSITORY_NAME }}
+          BACKEND_PRIVATE_IP: ${{ env.BACKEND_PRIVATE_IP }}
+        run: |
+          cat << 'EOF' > frontend-deploy.sh
+          #!/bin/bash
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY_NAME:frontend-latest
+          docker stop hls-frontend || true
+          docker rm hls-frontend || true
+          docker run -d --name hls-frontend -p 80:3000 --restart always -e BACKEND_PRIVATE_URL=http://$BACKEND_PRIVATE_IP:8000 $ECR_REGISTRY/$ECR_REPOSITORY_NAME:frontend-latest
+          EOF
+          chmod +x frontend-deploy.sh
+          
+          scp -o StrictHostKeyChecking=no -i private_key.pem frontend-deploy.sh ubuntu@${{ env.FRONTEND_IP }}:/home/ubuntu/frontend-deploy.sh
+          ssh -o StrictHostKeyChecking=no -i private_key.pem ubuntu@${{ env.FRONTEND_IP }} "ECR_REGISTRY=$ECR_REGISTRY ECR_REPOSITORY_NAME=$ECR_REPOSITORY_NAME BACKEND_PRIVATE_IP=$BACKEND_PRIVATE_IP /home/ubuntu/frontend-deploy.sh && rm -f /home/ubuntu/frontend-deploy.sh"

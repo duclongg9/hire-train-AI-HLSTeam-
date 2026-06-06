@@ -269,7 +269,6 @@ export function CandidateTestScreen() {
 
   useEffect(() => {
     if (!testToken || testToken === "demo-token") {
-      setMessage({ type: "warning", text: "Using local demo questions. Open this route with a backend test token for the live test flow." })
       return
     }
 
@@ -281,7 +280,6 @@ export function CandidateTestScreen() {
         setQuestions(mappedQuestions.length > 0 ? mappedQuestions : demoTestQuestions)
         setTimeLeft(test.duration_seconds)
         setDurationSeconds(test.duration_seconds)
-        setMessage({ type: "success", text: `Loaded ${mappedQuestions.length} backend test questions for ${test.candidate.full_name}.` })
         try {
           await startCandidateTest(testToken)
         } catch {
@@ -289,7 +287,9 @@ export function CandidateTestScreen() {
         }
       })
       .catch((error) => {
-        if (mounted) setMessage({ type: "error", text: `${formatApiError(error, "Could not open test token.")} Using local demo questions.` })
+        if (mounted) {
+          console.error(formatApiError(error, "Could not open test token."))
+        }
       })
 
     return () => {
@@ -320,7 +320,6 @@ export function CandidateTestScreen() {
     if (!question) return
     if (!testToken || testToken === "demo-token") {
       setSubmitted(true)
-      setMessage({ type: "success", text: "Demo test submitted locally. Backend submission requires a real test token." })
       return
     }
 

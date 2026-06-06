@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from enum import Enum
 from typing import Any, TypeVar
@@ -19,6 +19,7 @@ from app.schemas.module1 import (
     InterviewInvitation,
     InterviewReport,
     InterviewSession,
+    Position,
     RubricCriterion,
     TestAttempt,
     TestInvitation,
@@ -145,76 +146,89 @@ class SupabaseRepository:
     def update_campaign(self, campaign_id: UUID, data: dict[str, Any]) -> Campaign | None:
         return self._update_by_id("campaigns", campaign_id, data, Campaign)
 
-    def list_rubric(self, campaign_id: UUID) -> list[RubricCriterion]:
-        rows = self._fetch_all("select * from public.rubric_criteria where campaign_id = %s order by created_at", (campaign_id,))
+    def list_rubric(self, position_id: UUID) -> list[RubricCriterion]:
+        rows = self._fetch_all("select * from public.rubric_criteria where position_id = %s order by created_at", (position_id,))
         return [self._row_to_model(RubricCriterion, row) for row in rows]
 
-    def replace_rubric(self, campaign_id: UUID, criteria: list[RubricCriterion]) -> list[RubricCriterion]:
+    def create_position(self, position: Position) -> Position:
+        return self._insert_model("positions", position, Position)
+
+    def list_positions(self, campaign_id: UUID) -> list[Position]:
+        rows = self._fetch_all("select * from public.positions where campaign_id = %s order by created_at desc", (campaign_id,))
+        return [self._row_to_model(Position, row) for row in rows]
+
+    def get_position(self, position_id: UUID) -> Position | None:
+        return self._row_to_model(Position, self._fetch_one("select * from public.positions where id = %s", (position_id,)))
+
+    def update_position(self, position_id: UUID, data: dict[str, Any]) -> Position | None:
+        return self._update_by_id("positions", position_id, data, Position)
+
+    def replace_rubric(self, position_id: UUID, criteria: list[RubricCriterion]) -> list[RubricCriterion]:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from public.rubric_criteria where campaign_id = %s", (str(campaign_id),))
+                cur.execute("delete from public.rubric_criteria where position_id = %s", (str(position_id),))
                 rows = []
                 for item in criteria:
                     cur.execute(
                         """
                         insert into public.rubric_criteria
-                          (id, campaign_id, category, name, weight, description, created_at, updated_at)
+                          (id, position_id, category, name, weight, description, created_at, updated_at)
                         values (%s, %s, %s, %s, %s, %s, %s, %s)
                         returning *
                         """,
-                        tuple(self._param(value) for value in (item.id, item.campaign_id, item.category, item.name, item.weight, item.description, item.created_at, item.updated_at)),
+                        tuple(self._param(value) for value in (item.id, item.position_id, item.category, item.name, item.weight, item.description, item.created_at, item.updated_at)),
                     )
                     rows.append(cur.fetchone())
                 conn.commit()
         return [self._row_to_model(RubricCriterion, row) for row in rows]
 
-    def list_test_questions(self, campaign_id: UUID, published_only: bool = False) -> list[TestQuestion]:
-        sql = "select * from public.test_questions where campaign_id = %s"
-        params: tuple[Any, ...] = (campaign_id,)
+    def list_test_questions(self, position_id: UUID, published_only: bool = False) -> list[TestQuestion]:
+        sql = "select * from public.test_questions where position_id = %s"
+        params: tuple[Any, ...] = (position_id,)
         if published_only:
             sql += " and status = %s"
-            params = (campaign_id, "PUBLISHED")
+            params = (position_id, "PUBLISHED")
         sql += " order by order_index asc, created_at asc"
         rows = self._fetch_all(sql, params)
         return [self._row_to_model(TestQuestion, row) for row in rows]
 
-    def replace_test_questions(self, campaign_id: UUID, questions: list[TestQuestion]) -> list[TestQuestion]:
+    def replace_test_questions(self, position_id: UUID, questions: list[TestQuestion]) -> list[TestQuestion]:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from public.test_questions where campaign_id = %s", (str(campaign_id),))
+                cur.execute("delete from public.test_questions where position_id = %s", (str(position_id),))
                 rows = []
                 for item in questions:
                     cur.execute(
                         """
                         insert into public.test_questions
-                          (id, campaign_id, question_text, question_type, difficulty, skill_tag, options, correct_option_id, explanation, status, order_index, created_at, updated_at)
+                          (id, position_id, question_text, question_type, difficulty, skill_tag, options, correct_option_id, explanation, status, order_index, created_at, updated_at)
                         values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         returning *
                         """,
-                        tuple(self._param(value) for value in (item.id, item.campaign_id, item.question_text, item.question_type, item.difficulty, item.skill_tag, item.options, item.correct_option_id, item.explanation, item.status, item.order_index, item.created_at, item.updated_at)),
+                        tuple(self._param(value) for value in (item.id, item.position_id, item.question_text, item.question_type, item.difficulty, item.skill_tag, item.options, item.correct_option_id, item.explanation, item.status, item.order_index, item.created_at, item.updated_at)),
                     )
                     rows.append(cur.fetchone())
                 conn.commit()
         return [self._row_to_model(TestQuestion, row) for row in rows]
 
-    def publish_test_questions(self, campaign_id: UUID) -> list[TestQuestion]:
+    def publish_test_questions(self, position_id: UUID) -> list[TestQuestion]:
         rows = self._fetch_all(
             """
             update public.test_questions
             set status = 'PUBLISHED', updated_at = now()
-            where campaign_id = %s
+            where position_id = %s
             returning *
             """,
-            (campaign_id,),
+            (position_id,),
         )
         return [self._row_to_model(TestQuestion, row) for row in rows]
 
     def create_candidate(self, candidate: Candidate) -> Candidate:
         return self._insert_model("candidates", candidate, Candidate)
 
-    def list_candidates(self, campaign_id: UUID | None = None) -> list[Candidate]:
-        if campaign_id:
-            rows = self._fetch_all("select * from public.candidates where campaign_id = %s order by created_at desc", (campaign_id,))
+    def list_candidates(self, position_id: UUID | None = None) -> list[Candidate]:
+        if position_id:
+            rows = self._fetch_all("select * from public.candidates where position_id = %s order by created_at desc", (position_id,))
         else:
             rows = self._fetch_all("select * from public.candidates order by created_at desc")
         return [self._row_to_model(Candidate, row) for row in rows]
@@ -222,10 +236,10 @@ class SupabaseRepository:
     def get_candidate(self, candidate_id: UUID) -> Candidate | None:
         return self._row_to_model(Candidate, self._fetch_one("select * from public.candidates where id = %s", (candidate_id,)))
 
-    def get_candidate_by_email(self, campaign_id: UUID, email: str) -> Candidate | None:
+    def get_candidate_by_email(self, position_id: UUID, email: str) -> Candidate | None:
         row = self._fetch_one(
-            "select * from public.candidates where campaign_id = %s and lower(email) = lower(%s)",
-            (campaign_id, email),
+            "select * from public.candidates where position_id = %s and lower(email) = lower(%s)",
+            (position_id, email),
         )
         return self._row_to_model(Candidate, row)
 
@@ -240,8 +254,8 @@ class SupabaseRepository:
         row = self._fetch_one("select * from public.candidate_scores where candidate_id = %s order by created_at desc limit 1", (candidate_id,))
         return self._row_to_model(CandidateScore, row)
 
-    def list_candidate_scores(self, campaign_id: UUID) -> list[CandidateScore]:
-        rows = self._fetch_all("select * from public.candidate_scores where campaign_id = %s order by score desc", (campaign_id,))
+    def list_candidate_scores(self, position_id: UUID) -> list[CandidateScore]:
+        rows = self._fetch_all("select * from public.candidate_scores where position_id = %s order by score desc", (position_id,))
         return [self._row_to_model(CandidateScore, row) for row in rows]
 
     def create_stage_event(self, event: CandidateStageEvent) -> CandidateStageEvent:
