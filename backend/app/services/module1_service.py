@@ -40,7 +40,6 @@ from app.schemas.module1 import (
     Position,
     PositionCreate,
     PositionStatus,
-    PositionUpdate,
     RubricCriterion,
     RubricUpsertRequest,
     TestAttempt,
