@@ -18,10 +18,14 @@ import {
   listPositions, 
   createPosition, 
   createPositionFromFile,
+  closePosition,
+  publishCampaign,
   BackendCampaign, 
   BackendPosition, 
   formatApiError 
 } from "@/lib/recruitment/api"
+import { format } from "date-fns"
+import { cn } from "@/lib/utils"
 
 export default function CampaignDetailPage() {
   const params = useParams()
@@ -103,6 +107,25 @@ export default function CampaignDetailPage() {
     }
   }
 
+  const handleHidePosition = async (id: string) => {
+    try {
+      await closePosition(id)
+      setPositions(positions.map(p => p.id === id ? { ...p, status: "CLOSED" } : p))
+    } catch (err) {
+      alert(formatApiError(err, "Failed to hide position."))
+    }
+  }
+
+  const handlePublishCampaign = async () => {
+    try {
+      const updated = await publishCampaign(campaignId)
+      setCampaign(updated)
+      alert("Chiến dịch đã được Active thành công!")
+    } catch (err) {
+      alert(formatApiError(err, "Không thể active chiến dịch. Hãy kiểm tra các vị trí đã cấu hình đủ 3 bước AI chưa."))
+    }
+  }
+
   return (
     <HrShell title={campaign?.title || "Campaign Details"} subtitle="Quản lý các vị trí tuyển dụng của chiến dịch">
       <div className="space-y-6">
@@ -111,10 +134,17 @@ export default function CampaignDetailPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Quay lại danh sách
           </Button>
-          <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" onClick={() => setIsSlideOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add New Position
-          </Button>
+          <div className="flex items-center gap-3">
+            {campaign?.status !== "CLOSED" && campaign?.status !== "ACTIVE" && (
+              <Button variant="outline" className="text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handlePublishCampaign}>
+                Active Chiến Dịch
+              </Button>
+            )}
+            <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" onClick={() => setIsSlideOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add New Position
+            </Button>
+          </div>
         </div>
 
         {error && <div className="text-red-500">{error}</div>}
@@ -128,9 +158,9 @@ export default function CampaignDetailPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Vị trí (Job Title)</TableHead>
-                  <TableHead>Số lượng (Headcount)</TableHead>
-                  <TableHead>Budget</TableHead>
-                  <TableHead>Số CV đã nộp</TableHead>
+                  <TableHead>Số lượng</TableHead>
+                  <TableHead>Start / End Date</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Hành động</TableHead>
                 </TableRow>
               </TableHeader>
@@ -148,16 +178,39 @@ export default function CampaignDetailPage() {
                     <TableRow key={pos.id}>
                       <TableCell className="font-medium text-foreground">{pos.title}</TableCell>
                       <TableCell>{pos.headcount}</TableCell>
-                      <TableCell>{pos.budget || "N/A"}</TableCell>
-                      <TableCell>{pos.candidate_count || 0}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell>
+                        <div className="text-sm">N/A</div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={cn(
+                          "rounded-md px-2 py-1 text-xs font-medium",
+                          pos.status === "PUBLISHED" ? "bg-green-100 text-green-800" :
+                          pos.status === "CLOSED" ? "bg-red-100 text-red-800" :
+                          "bg-slate-100 text-slate-800"
+                        )}>
+                          {pos.status || "DRAFT"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right space-x-2">
                         <Button 
                           variant="outline" 
                           size="sm" 
-                          onClick={() => router.push(`/hr/campaigns/${campaignId}/rubric?positionId=${pos.id}`)}
+                          onClick={() => router.push(`/hr/campaigns/${campaignId}/position/${pos.id}`)}
                         >
                           Cấu hình AI
                         </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => router.push(`/hr/campaigns/${campaignId}/leaderboard?positionId=${pos.id}`)}
+                        >
+                          Xem Leaderboard
+                        </Button>
+                        {pos.status !== "CLOSED" && (
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleHidePosition(pos.id)}>
+                            Ẩn
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   BarChart3,
   Brain,
@@ -31,13 +31,6 @@ const adminNav: NavItem[] = [
 const hrBaseNav: NavItem[] = [
   { href: "/hr", label: "Dashboard", icon: LayoutDashboard },
   { href: "/hr/campaigns", label: "Campaigns", icon: FileText },
-]
-
-const hrCampaignNav = [
-  { segment: "rubric", label: "CV Rubric", icon: ListChecks },
-  { segment: "interview", label: "Interview Rubric", icon: ClipboardList },
-  { segment: "test-review", label: "Test Review", icon: FileQuestion },
-  { segment: "leaderboard", label: "Leaderboard", icon: BarChart3 },
 ]
 
 function isNavActive(pathname: string, href: string) {
@@ -91,8 +84,10 @@ function ShellFrame({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const initials = role === "Admin" ? "AD" : "HR"
   const [activeCampaignId, setActiveCampaignId] = useState("")
+  const [activePositionId, setActivePositionId] = useState("")
 
   useEffect(() => {
     if (role !== "HR Manager") return
@@ -101,19 +96,18 @@ function ShellFrame({
     const nextCampaignId = routeCampaignId || storedCampaignId || ""
     setActiveCampaignId(nextCampaignId)
     if (routeCampaignId) window.localStorage.setItem("activeCampaignId", routeCampaignId)
-  }, [pathname, role])
+    
+    const queryPositionId = searchParams.get("positionId")
+    const storedPositionId = window.localStorage.getItem("activePositionId")
+    const nextPositionId = queryPositionId || storedPositionId || ""
+    setActivePositionId(nextPositionId)
+    if (queryPositionId) window.localStorage.setItem("activePositionId", queryPositionId)
+  }, [pathname, searchParams, role])
 
   const navItems = useMemo(() => {
     if (role !== "HR Manager") return nav
-    const campaignItems = activeCampaignId
-      ? hrCampaignNav.map((item) => ({
-          href: `/hr/campaigns/${activeCampaignId}/${item.segment}`,
-          label: item.label,
-          icon: item.icon,
-        }))
-      : []
-    return [...hrBaseNav, ...campaignItems]
-  }, [activeCampaignId, nav, role])
+    return hrBaseNav
+  }, [nav, role])
 
   const activeLabel = useMemo(() => {
     return navItems.find((item) => isNavActive(pathname, item.href))?.label ?? title

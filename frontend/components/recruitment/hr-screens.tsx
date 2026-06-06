@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import {
   ArrowLeft,
   BarChart3,
@@ -10,11 +10,13 @@ import {
   Edit3,
   FileText,
   Filter,
+  Loader2,
   Mail,
   Plus,
   RefreshCw,
   Search,
   Send,
+  Sparkles,
   Trash2,
   Users,
 } from "lucide-react"
@@ -55,11 +57,12 @@ import {
   listCampaigns,
   listLeaderboard,
   listTestQuestions,
-  publishTestQuestions,
+  publishPosition,
+  saveTestQuestions,
   finalDecision,
   inviteCandidateToInterview,
   inviteCandidateToTest,
-  scoreCampaignCandidates,
+  scorePositionCandidates,
   type BackendCampaign,
   type BackendLeaderboardRow,
   type BackendRubricCriterion,
@@ -170,12 +173,7 @@ export function HrDashboardScreen() {
   const [dashboardCandidates, setDashboardCandidates] = useState<Candidate[]>(candidates)
   const [activeCampaignCount, setActiveCampaignCount] = useState(campaigns.length)
   const [activeCampaign, setActiveCampaign] = useState<BackendCampaign | null>(null)
-  const [jdFile, setJdFile] = useState<File | null>(null)
-  const [jdMessage, setJdMessage] = useState("")
   const [healthMessage, setHealthMessage] = useState("")
-  const [jdError, setJdError] = useState("")
-  const [showJdError, setShowJdError] = useState(false)
-  const [analyzingJd, setAnalyzingJd] = useState(false)
   const [drawerCandidate, setDrawerCandidate] = useState<Candidate | null>(null)
 
   useEffect(() => {
@@ -190,7 +188,6 @@ export function HrDashboardScreen() {
     listCampaigns()
       .then(async (backendCampaigns) => {
         if (!mounted || backendCampaigns.length === 0) {
-          if (mounted) setJdMessage("No backend campaigns yet. Create a campaign to start the live flow.")
           return
         }
         setActiveCampaignCount(backendCampaigns.filter((campaign) => campaign.status === "ACTIVE").length || backendCampaigns.length)
@@ -203,52 +200,15 @@ export function HrDashboardScreen() {
         }
       })
       .catch((error) => {
-        if (mounted) setJdMessage(`${formatApiError(error)} Using local demo data until the backend is running.`)
+        // Ignoring error for now, demo data is loaded
       })
     return () => {
       mounted = false
     }
   }, [])
 
-  const analyzeJd = async () => {
-    setJdMessage("")
-    setJdError("")
-    setShowJdError(false)
-    if (!jdFile) {
-      setJdError("Choose a JD file before running analysis.")
-      return
-    }
-    if (!activeCampaign?.id) {
-      setJdError("Create or select a backend campaign before analyzing a JD.")
-      return
-    }
-    const lowerName = jdFile.name.toLowerCase()
-    const validFormat = [".pdf", ".doc", ".docx"].some((extension) => lowerName.endsWith(extension))
-    if (!validFormat) {
-      setJdError("Unsupported JD file format.")
-      setShowJdError(true)
-      return
-    }
-    if (lowerName.includes("scanned") || lowerName.includes("short")) {
-      setJdError(lowerName.includes("scanned") ? "Scanned PDF image detected." : "JD content is too short.")
-      setShowJdError(true)
-      return
-    }
-    setAnalyzingJd(true)
-    try {
-      const rubric = await extractRubricFromJdFile(activeCampaign.id, jdFile)
-      setJdMessage(`JD analyzed and ${rubric.length} rubric criteria were saved for ${activeCampaign.title}.`)
-      rememberActiveCampaign(activeCampaign.id)
-    } catch (error) {
-      setJdError(formatApiError(error, "JD analysis failed."))
-      setShowJdError(true)
-    } finally {
-      setAnalyzingJd(false)
-    }
-  }
-
   return (
-    <HrShell title="HR Recruitment Dashboard" subtitle="Single workspace for JD analysis, candidate ranking, and hiring pipeline.">
+    <HrShell title="HR Recruitment Dashboard" subtitle="Single workspace for candidate ranking and hiring pipeline.">
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-4">
           <StatCard label="Total Candidates" value={dashboardCandidates.length} icon={<Users className="h-5 w-5" />} />
@@ -258,34 +218,8 @@ export function HrDashboardScreen() {
         </div>
 
         {healthMessage ? <FormMessage type={healthMessage.startsWith("Backend health: ok") ? "success" : "warning"}>{healthMessage}</FormMessage> : null}
-        {jdMessage ? <FormMessage type={jdMessage.startsWith("Using") ? "warning" : "success"}>{jdMessage}</FormMessage> : null}
-        {jdError && !showJdError ? <FormMessage type="error">{jdError}</FormMessage> : null}
 
-        <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-          <Card className="rounded-lg p-4 shadow-sm">
-            <div className="mb-4">
-              <h2 className="font-semibold text-foreground">JD analysis</h2>
-              <p className="text-sm text-muted-foreground">
-                {activeCampaign ? `Active campaign: ${activeCampaign.title}` : "Upload and validate the JD after creating a backend campaign."}
-              </p>
-            </div>
-            <UploadPanel
-              title="Upload JD file"
-              description="PDF, DOC, or DOCX. File names containing scanned or short trigger backend-aligned validation states."
-              accept=".pdf,.doc,.docx"
-              fileName={jdFile?.name}
-              onChange={setJdFile}
-            />
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" disabled={analyzingJd || !activeCampaign} onClick={analyzeJd}>
-                {analyzingJd ? "Analyzing..." : "Analyze JD"}
-              </Button>
-              <Link href={activeCampaign ? `/hr/campaigns/${activeCampaign.id}/rubric` : "/hr/campaigns/new"}>
-                <Button variant="outline">Review Rubric</Button>
-              </Link>
-            </div>
-          </Card>
-
+        <div className="grid gap-6">
           <Card className="rounded-lg p-4 shadow-sm">
             <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
@@ -382,15 +316,6 @@ export function HrDashboardScreen() {
         </div>
       </div>
       <CandidateDrawer candidate={drawerCandidate} onClose={() => setDrawerCandidate(null)} />
-      <JdErrorModal
-        open={showJdError}
-        error={jdError}
-        onUploadAgain={() => {
-          setJdFile(null)
-          setShowJdError(false)
-        }}
-        onCancel={() => setShowJdError(false)}
-      />
     </HrShell>
   )
 }
@@ -631,225 +556,229 @@ export function RubricScreen() {
   )
 }
 
-export function TestReviewScreen() {
-  const router = useRouter()
-  const campaignId = useRouteCampaignId() || getRememberedCampaignId()
-  const [questions, setQuestions] = useState<TestQuestion[]>(testQuestions)
-  const [editing, setEditing] = useState<TestQuestion | null>(null)
-  const [open, setOpen] = useState(false)
-  const [loadingQuestions, setLoadingQuestions] = useState(false)
+export function TestReviewScreen({ onStatusChange }: { onStatusChange?: (saved: boolean) => void }) {
+  const params = useParams<{ campaignId?: string, positionId?: string }>()
+  const searchParams = useSearchParams()
+  const campaignId = params?.campaignId ?? ""
+  const positionId = params?.positionId ?? searchParams.get("positionId") ?? ""
+  
+  const [questions, setQuestions] = useState<BackendTestQuestion[]>([])
+  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview")
+  const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
-  const [publishing, setPublishing] = useState(false)
-  const [message, setMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null)
-  const [draft, setDraft] = useState({
-    question: "",
-    options: "",
-    correctAnswer: "",
-    difficulty: "Medium" as TestQuestion["difficulty"],
-    relatedSkill: "React architecture",
-  })
+  const [saving, setSaving] = useState(false)
+  const [aiCount, setAiCount] = useState(15)
+  const [saveMessage, setSaveMessage] = useState("")
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    if (!campaignId) {
-      setMessage({ type: "warning", text: "Open Test Review from a backend campaign to load generated questions." })
-      return
-    }
-
     let mounted = true
-    setLoadingQuestions(true)
-    rememberActiveCampaign(campaignId)
-    listTestQuestions(campaignId)
-      .then((backendQuestions) => {
-        if (!mounted) return
-        if (backendQuestions.length > 0) {
-          setQuestions(backendQuestions.map(mapBackendTestQuestion))
-          setMessage({ type: "success", text: `Loaded ${backendQuestions.length} backend test questions.` })
-        } else {
-          setMessage({ type: "warning", text: "No backend test questions yet. Generate them from the saved rubric." })
-        }
+    if (!positionId) return
+    setLoading(true)
+    listTestQuestions(positionId)
+      .then((data) => {
+        if (mounted) setQuestions(data)
       })
-      .catch((error) => {
-        if (mounted) setMessage({ type: "error", text: formatApiError(error, "Could not load test questions.") })
+      .catch((err) => {
+        if (mounted) setError(formatApiError(err, "Could not load test questions."))
+        onStatusChange?.(false)
       })
       .finally(() => {
-        if (mounted) setLoadingQuestions(false)
+        if (mounted) setLoading(false)
       })
+    return () => { mounted = false }
+  }, [positionId])
 
-    return () => {
-      mounted = false
-    }
-  }, [campaignId])
-
-  const openEditor = (question?: TestQuestion) => {
-    setEditing(question ?? null)
-    setDraft(
-      question
-        ? { ...question, options: question.options.join("\n") }
-        : { question: "", options: "Option A\nOption B\nOption C\nOption D", correctAnswer: "", difficulty: "Medium", relatedSkill: "React architecture" },
-    )
-    setOpen(true)
-  }
-
-  const saveQuestion = () => {
-    const options = draft.options.split("\n").map((option) => option.trim()).filter(Boolean).slice(0, 4)
-    const nextQuestion: TestQuestion = {
-      id: editing?.id ?? `q-${Date.now()}`,
-      question: draft.question,
-      options,
-      correctAnswer: draft.correctAnswer || options[0] || "",
-      difficulty: draft.difficulty,
-      relatedSkill: draft.relatedSkill,
-    }
-    setQuestions((current) => (editing ? current.map((question) => (question.id === editing.id ? nextQuestion : question)) : [nextQuestion, ...current]))
-    setOpen(false)
-  }
-
-  const generate = async () => {
-    if (!campaignId) {
-      setMessage({ type: "error", text: "Missing campaign_id in the route." })
-      return
-    }
+  const handleAiGenerate = async () => {
+    if (!positionId) return
     setGenerating(true)
-    setMessage(null)
+    setError("")
     try {
-      const generated = await generateTestQuestions(campaignId, 15)
-      setQuestions(generated.map(mapBackendTestQuestion))
-      setMessage({ type: "success", text: `Generated ${generated.length} questions from backend.` })
-    } catch (error) {
-      setMessage({ type: "error", text: formatApiError(error, "Could not generate test questions.") })
+      const data = await generateTestQuestions(positionId, aiCount)
+      setQuestions(data)
+    } catch (err) {
+      setError(formatApiError(err, "Generation failed."))
     } finally {
       setGenerating(false)
     }
   }
 
-  const publish = async () => {
-    if (!campaignId) {
-      setMessage({ type: "error", text: "Missing campaign_id in the route." })
-      return
-    }
-    setPublishing(true)
-    setMessage(null)
+  const handleSave = async () => {
+    if (!positionId) return
+    setSaving(true)
+    setSaveMessage("")
     try {
-      await publishTestQuestions(campaignId)
-      setMessage({ type: "success", text: "Test questions published. Moving to leaderboard." })
-      setPublishing(false)
-      router.push(`/hr/campaigns/${campaignId}/leaderboard`)
-    } catch (error) {
-      setMessage({ type: "error", text: formatApiError(error, "Could not publish test questions.") })
-      setPublishing(false)
+      const saved = await saveTestQuestions(positionId, questions)
+      setQuestions(saved)
+      setSaveMessage("Saved successfully to backend.")
+      onStatusChange?.(true)
+    } catch (err) {
+      setError(formatApiError(err, "Failed to save test questions."))
+      onStatusChange?.(false)
+    } finally {
+      setSaving(false)
     }
   }
 
-  return (
-    <HrShell title="Test Review" subtitle="Review AI generated multiple-choice questions before publishing the candidate test.">
-      <div className="space-y-6">
-        {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              {loadingQuestions ? "Loading backend questions..." : `${questions.length} questions ready for HR review.`}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" disabled={generating || publishing} onClick={generate}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {generating ? "Generating..." : "Generate"}
-            </Button>
-            <Button variant="outline" onClick={() => openEditor()}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Question
-            </Button>
-            <Button className="bg-[#F37021] text-white hover:bg-[#d95f18]" disabled={publishing} onClick={publish}>
-              <Send className="mr-2 h-4 w-4" />
-              {publishing ? "Publishing..." : "Publish Test"}
-            </Button>
-          </div>
-        </div>
+  const updateQuestion = (id: string, updates: Partial<BackendTestQuestion>) => {
+    setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, ...updates } : q)))
+  }
 
-        <div className="grid gap-4">
-          {questions.map((question, index) => (
-            <Card key={question.id} className="rounded-lg p-4 shadow-sm">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-md bg-[#0033A0]/10 px-2 py-1 text-xs font-semibold text-[#0033A0]">Q{index + 1}</span>
-                    <StatusPill tone={question.difficulty === "Hard" ? "red" : question.difficulty === "Medium" ? "orange" : "green"}>{question.difficulty}</StatusPill>
-                    <StatusPill tone="slate">{question.relatedSkill}</StatusPill>
+  const handleDeleteQuestion = (id: string) => {
+    setQuestions((prev) => prev.filter((q) => q.id !== id))
+  }
+
+  const handleAddEmptyQuestion = () => {
+    const newQ = {
+      id: `new-${Date.now()}`,
+      question_text: "",
+      options: [{ id: "o1", text: "" }, { id: "o2", text: "" }, { id: "o3", text: "" }, { id: "o4", text: "" }],
+      correct_option_id: "o1",
+      difficulty: "Medium",
+      skill_tag: "General"
+    } as unknown as BackendTestQuestion
+    setQuestions([newQ, ...questions])
+  }
+
+  return (
+    <div className="space-y-6 pt-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-foreground">Review & AI Generation</h2>
+        <p className="text-sm text-muted-foreground">Review test questions or generate new ones using AI.</p>
+      </div>
+      
+      {error && <div className="text-red-500 font-medium text-sm">{error}</div>}
+      
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-lg border bg-white p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" className="font-semibold" onClick={() => setViewMode("preview")}>
+            Preview Mode
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setViewMode("edit")}>
+            Edit Mode
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input 
+            type="number" 
+            min="5" 
+            max="30" 
+            value={aiCount} 
+            onChange={(e) => setAiCount(parseInt(e.target.value) || 15)}
+            className="w-20 h-9"
+          />
+          <Button className="bg-[#102a62] text-white hover:bg-[#0b1d45]" onClick={handleAiGenerate} disabled={generating}>
+            {generating ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                AI Auto-Generate
+              </span>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {loading ? (
+          <div className="flex justify-center p-8">Loading questions...</div>
+        ) : questions.length === 0 ? (
+          <div className="text-center p-12 border rounded-lg bg-slate-50 text-slate-500">
+            No test questions yet. Use AI to generate them or add manually.
+          </div>
+        ) : viewMode === "edit" ? (
+          questions.map((q, idx) => (
+            <Card key={q.id || idx} className="p-4 relative group">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-red-500"
+                onClick={() => handleDeleteQuestion(q.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <span className="font-bold text-lg text-slate-400 mt-1">{idx + 1}.</span>
+                  <div className="flex-1 space-y-3">
+                    <Textarea 
+                      value={q.question_text} 
+                      onChange={(e) => updateQuestion(q.id, { question_text: e.target.value })}
+                      className="font-medium bg-slate-50"
+                      placeholder="Question text..."
+                    />
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      {q.options.map((opt: any) => (
+                        <div key={opt.id} className="flex items-center gap-2">
+                          <input 
+                            type="radio" 
+                            name={`correct-${q.id}`}
+                            checked={q.correct_option_id === opt.id}
+                            onChange={() => updateQuestion(q.id, { correct_option_id: opt.id })}
+                            className="w-4 h-4 text-[#f37021] focus:ring-[#f37021]"
+                          />
+                          <Input 
+                            value={opt.text}
+                            onChange={(e) => {
+                              const newOptions = q.options.map((o: any) => o.id === opt.id ? { ...o, text: e.target.value } : o)
+                              updateQuestion(q.id, { options: newOptions })
+                            }}
+                            className={q.correct_option_id === opt.id ? "border-[#f37021] bg-orange-50" : ""}
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <h3 className="mt-3 font-semibold text-foreground">{question.question}</h3>
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    {question.options.map((option) => (
-                      <div key={option} className={cn("rounded-lg border p-3 text-sm", option === question.correctAnswer ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-white")}>
-                        {option}
+                </div>
+              </div>
+            </Card>
+          ))
+        ) : (
+          questions.map((q, idx) => (
+            <Card key={q.id || idx} className="p-5 border-l-4 border-l-[#102a62]">
+              <div className="flex gap-4">
+                <span className="font-bold text-lg text-slate-400">{idx + 1}.</span>
+                <div className="flex-1 space-y-4">
+                  <h4 className="font-medium text-slate-900">{q.question_text}</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {q.options.map((opt: any) => (
+                      <div 
+                        key={opt.id} 
+                        className={`p-3 rounded-md border text-sm ${
+                          q.correct_option_id === opt.id 
+                            ? "bg-green-50 border-green-200 text-green-900 font-medium" 
+                            : "bg-slate-50 border-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {opt.text}
                       </div>
                     ))}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => openEditor(question)}>
-                    <Edit3 className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-red-700" onClick={() => setQuestions((current) => current.filter((item) => item.id !== question.id))}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
               </div>
             </Card>
-          ))}
-        </div>
+          ))
+        )}
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit Question" : "Add Question"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Question text</Label>
-              <Textarea value={draft.question} onChange={(event) => setDraft({ ...draft, question: event.target.value })} rows={3} />
-            </div>
-            <div className="space-y-2">
-              <Label>4 options, one per line</Label>
-              <Textarea value={draft.options} onChange={(event) => setDraft({ ...draft, options: event.target.value })} rows={4} />
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-2">
-                <Label>Correct answer</Label>
-                <Input value={draft.correctAnswer} onChange={(event) => setDraft({ ...draft, correctAnswer: event.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Difficulty</Label>
-                <Select value={draft.difficulty} onValueChange={(value) => setDraft({ ...draft, difficulty: value as TestQuestion["difficulty"] })}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Easy">Easy</SelectItem>
-                    <SelectItem value="Medium">Medium</SelectItem>
-                    <SelectItem value="Hard">Hard</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Related skill</Label>
-                <Input value={draft.relatedSkill} onChange={(event) => setDraft({ ...draft, relatedSkill: event.target.value })} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" onClick={saveQuestion}>
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </HrShell>
+      <div className="flex justify-between items-center pt-4 border-t">
+        <Button variant="outline" onClick={handleAddEmptyQuestion}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Question Manually
+        </Button>
+        <div className="flex items-center gap-3">
+          {saveMessage && <span className="text-sm text-green-600 font-medium">{saveMessage}</span>}
+          <Button variant="outline" disabled={saving} onClick={handleSave}>
+            {saving ? "Saving..." : "Save Questions"}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -860,7 +789,8 @@ function CandidateDrawer({
   candidate: Candidate | null
   onClose: () => void
 }) {
-  const campaignId = useRouteCampaignId() || getRememberedCampaignId()
+  const searchParams = useSearchParams()
+  const positionId = searchParams.get("positionId") || window.localStorage.getItem("activePositionId") || ""
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null)
 
@@ -877,9 +807,9 @@ function CandidateDrawer({
     }
   }
 
-  const requireCampaignId = () => {
-    if (!campaignId) throw new Error("Missing campaign_id. Open this candidate from a campaign leaderboard route.")
-    return campaignId
+  const requirePositionId = () => {
+    if (!positionId) throw new Error("Missing position_id. Open this candidate from a position leaderboard route.")
+    return positionId
   }
 
   return (
@@ -945,8 +875,8 @@ function CandidateDrawer({
                 disabled={Boolean(busyAction)}
                 onClick={() =>
                   runAction("Score CV", async () => {
-                    const activeCampaignId = requireCampaignId()
-                    await scoreCampaignCandidates(activeCampaignId, candidate.id)
+                    const activePositionId = requirePositionId()
+                    await scorePositionCandidates(activePositionId, candidate.id)
                     return "CV scoring requested for this candidate."
                   })
                 }
@@ -1131,7 +1061,10 @@ function CandidateRankingTable({
 }
 
 export function LeaderboardScreen() {
-  const campaignId = useRouteCampaignId() || getRememberedCampaignId()
+  const params = useParams<{ campaignId?: string }>()
+  const searchParams = useSearchParams()
+  const campaignId = params?.campaignId || getRememberedCampaignId()
+  const positionId = searchParams.get("positionId") || window.localStorage.getItem("activePositionId") || ""
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"All" | CandidateStatus>("All")
   const [skillFilter, setSkillFilter] = useState("All")
@@ -1170,8 +1103,12 @@ export function LeaderboardScreen() {
           if (mounted) setMessage("No backend campaign found. Using local demo leaderboard.")
           return
         }
+        if (!positionId) {
+          if (mounted) setMessage("Please select a position from the campaign details to view the leaderboard.")
+          return
+        }
         rememberActiveCampaign(nextCampaignId)
-        const rows = await listLeaderboard(nextCampaignId)
+        const rows = await listLeaderboard(positionId)
         if (mounted && rows.length > 0) setLeaderboardCandidates(rows.map(mapBackendLeaderboardRow))
       } catch (error) {
         if (mounted) setMessage(`${formatApiError(error)} Using local demo leaderboard until the backend is running.`)
@@ -1275,7 +1212,10 @@ export function LeaderboardScreen() {
 }
 
 export function CompareScreen() {
-  const campaignId = useRouteCampaignId() || getRememberedCampaignId()
+  const params = useParams<{ campaignId?: string }>()
+  const searchParams = useSearchParams()
+  const campaignId = params?.campaignId || getRememberedCampaignId()
+  const positionId = searchParams.get("positionId") || window.localStorage.getItem("activePositionId") || ""
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   useEffect(() => {
@@ -1304,7 +1244,7 @@ export function CompareScreen() {
   return (
     <HrShell title="Candidate Compare" subtitle="Side-by-side comparison for 2-5 selected candidates.">
       <div className="space-y-4">
-        <Link href={campaignId ? `/hr/campaigns/${campaignId}/leaderboard` : "/hr"}>
+        <Link href={campaignId && positionId ? `/hr/campaigns/${campaignId}/leaderboard?positionId=${positionId}` : "/hr"}>
           <Button variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Leaderboard
@@ -1360,7 +1300,10 @@ export function CompareScreen() {
 }
 
 export function InterviewReportScreen() {
-  const campaignId = useRouteCampaignId() || getRememberedCampaignId()
+  const params = useParams<{ campaignId?: string }>()
+  const searchParams = useSearchParams()
+  const campaignId = params?.campaignId || getRememberedCampaignId()
+  const positionId = searchParams.get("positionId") || window.localStorage.getItem("activePositionId") || ""
   const candidate = candidates[0]
 
   return (
@@ -1373,7 +1316,7 @@ export function InterviewReportScreen() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline">Export Report</Button>
-            <Link href={campaignId ? `/hr/campaigns/${campaignId}/leaderboard` : "/hr"}>
+            <Link href={campaignId && positionId ? `/hr/campaigns/${campaignId}/leaderboard?positionId=${positionId}` : "/hr"}>
               <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]">Back to Candidate</Button>
             </Link>
           </div>

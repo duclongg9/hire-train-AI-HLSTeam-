@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import {
   Bold,
   GripVertical,
@@ -22,7 +22,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cvRubricGroups, type RubricCriterion, type RubricGroup } from "@/lib/recruitment/rubric-data"
-import { formatApiError, getRubric, publishCampaign, saveRubric, type BackendRubricCriterion } from "@/lib/recruitment/api"
+import { formatApiError, getRubric, publishPosition, saveRubric, type BackendRubricCriterion } from "@/lib/recruitment/api"
 import { cn } from "@/lib/utils"
 
 type DragState =
@@ -472,9 +472,12 @@ function CriteriaTable({
   )
 }
 
-export function CriteriaScoringScreen() {
-  const params = useParams<{ campaignId?: string }>()
+export function CriteriaScoringScreen({ onStatusChange }: { onStatusChange?: (saved: boolean) => void }) {
+  const params = useParams<{ campaignId?: string, positionId?: string }>()
+  const searchParams = useSearchParams()
   const campaignId = params?.campaignId ?? ""
+  const positionId = params?.positionId ?? searchParams.get("positionId") ?? ""
+  
   const [groups, setGroups] = useState<RubricGroup[]>(cvRubricGroups)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -489,26 +492,28 @@ export function CriteriaScoringScreen() {
   const backendCriteria = useMemo(() => normalizeToBackendCriteria(groups), [groups])
 
   useEffect(() => {
-    if (!campaignId) {
-      setMessage({ type: "warning", text: "Open this page from a campaign route to save rubric changes to backend." })
+    if (!positionId) {
+      setMessage({ type: "warning", text: "Open this page from a campaign's position to save rubric changes to backend." })
       return
     }
 
     let mounted = true
     setLoading(true)
-    getRubric(campaignId)
+    getRubric(positionId)
       .then((criteria) => {
         if (!mounted) return
         if (criteria.length > 0) {
           setGroups(groupsFromBackend(criteria))
           setMessage({ type: "success", text: `Loaded ${criteria.length} rubric criteria from backend.` })
         } else {
-          setMessage({ type: "warning", text: "No backend rubric yet. Edit the draft below, then save it to this campaign." })
+          setMessage({ type: "warning", text: "No backend rubric yet. Edit the draft below, then save it to this position." })
         }
-        window.localStorage.setItem("activeCampaignId", campaignId)
+        if (campaignId) window.localStorage.setItem("activeCampaignId", campaignId)
+        window.localStorage.setItem("activePositionId", positionId)
       })
       .catch((error) => {
         if (mounted) setMessage({ type: "error", text: formatApiError(error, "Could not load campaign rubric.") })
+        onStatusChange?.(false)
       })
       .finally(() => {
         if (mounted) setLoading(false)
@@ -517,7 +522,7 @@ export function CriteriaScoringScreen() {
     return () => {
       mounted = false
     }
-  }, [campaignId])
+  }, [campaignId, positionId])
 
   const addGroup = () => {
     setGroups((current) => [
@@ -532,8 +537,8 @@ export function CriteriaScoringScreen() {
   }
 
   const saveToBackend = async () => {
-    if (!campaignId) {
-      setMessage({ type: "error", text: "Missing campaign_id in the route." })
+    if (!positionId) {
+      setMessage({ type: "error", text: "Missing positionId in the route." })
       return
     }
     if (backendCriteria.length === 0) {
@@ -544,26 +549,28 @@ export function CriteriaScoringScreen() {
     setSaving(true)
     setMessage(null)
     try {
-      const saved = await saveRubric(campaignId, backendCriteria)
+      const saved = await saveRubric(positionId, backendCriteria)
       setGroups(groupsFromBackend(saved))
       setMessage({ type: "success", text: `Saved ${saved.length} rubric criteria. Backend weights total 100%.` })
+      onStatusChange?.(true)
     } catch (error) {
       setMessage({ type: "error", text: formatApiError(error, "Could not save rubric.") })
+      onStatusChange?.(false)
     } finally {
       setSaving(false)
     }
   }
 
   const publishToBackend = async () => {
-    if (!campaignId) {
-      setMessage({ type: "error", text: "Missing campaign_id in the route." })
+    if (!positionId) {
+      setMessage({ type: "error", text: "Missing positionId in the route." })
       return
     }
     setPublishing(true)
     setMessage(null)
     try {
-      const campaign = await publishCampaign(campaignId)
-      setMessage({ type: "success", text: `Campaign published. Public job route: /jobs/${campaign.id}` })
+      const pos = await publishPosition(positionId)
+      setMessage({ type: "success", text: `Position published.` })
     } catch (error) {
       setMessage({ type: "error", text: formatApiError(error, "Could not publish campaign.") })
     } finally {
@@ -572,35 +579,26 @@ export function CriteriaScoringScreen() {
   }
 
   return (
-    <HrShell
-      title="CV Rubric Criteria Scoring"
-      subtitle="Create, edit, organize, and AI-generate scoring criteria for CV evaluation."
-    >
-      <div className="space-y-4">
-        {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
-        <RubricToolbar onAddGroup={addGroup} />
-        <div className="overflow-x-auto pb-2">
-          <CriteriaTable groups={groups} setGroups={setGroups} />
+    <div className="space-y-4 pt-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-foreground">CV Rubric Criteria Scoring</h2>
+        <p className="text-sm text-muted-foreground">Create, edit, organize, and AI-generate scoring criteria for CV evaluation.</p>
+      </div>
+      {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
+      <RubricToolbar onAddGroup={addGroup} />
+      <div className="overflow-x-auto pb-2">
+        <CriteriaTable groups={groups} setGroups={setGroups} />
+      </div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" disabled={loading || saving} onClick={saveToBackend}>
+            {saving ? "Saving..." : "Save Rubric"}
+          </Button>
         </div>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" disabled={loading || saving} onClick={saveToBackend}>
-              {saving ? "Saving..." : "Save Rubric"}
-            </Button>
-            <Button className="bg-[#F37021] text-white hover:bg-[#d95f18]" disabled={loading || publishing} onClick={publishToBackend}>
-              {publishing ? "Publishing..." : "Publish Campaign"}
-            </Button>
-            {campaignId ? (
-              <Link href={`/hr/campaigns/${campaignId}/test-review`}>
-                <Button className="bg-[#102a62] text-white hover:bg-[#0b1d45]">Continue to Test</Button>
-              </Link>
-            ) : null}
-          </div>
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm">
-            Lưu ý: Tổng điểm hiện tại đang là {overallScore}/100đ
-          </div>
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 shadow-sm">
+          Lưu ý: Tổng điểm hiện tại đang là {overallScore}/100đ
         </div>
       </div>
-    </HrShell>
+    </div>
   )
 }

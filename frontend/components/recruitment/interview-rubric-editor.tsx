@@ -13,6 +13,8 @@ import {
   type InterviewCriterion,
   type InterviewRubricGroup,
 } from "@/lib/recruitment/rubric-data"
+import { saveInterviewRubric, getInterviewRubric, formatApiError } from "@/lib/recruitment/api"
+import { useParams, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 
 type DragState =
@@ -65,13 +67,9 @@ function InterviewToolbar({
         </select>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" size="sm">
-          <Save className="mr-2 h-4 w-4" />
-          Save template
-        </Button>
         <Button className="bg-[#102a62] text-white hover:bg-[#0b1d45]">
           <Sparkles className="mr-2 h-4 w-4" />
-          AI review
+          AI Auto-Generate
         </Button>
       </div>
     </div>
@@ -381,7 +379,15 @@ function InterviewRubricTable({
   )
 }
 
-export function InterviewRubricEditorPage() {
+export function InterviewRubricEditorPage({ onStatusChange }: { onStatusChange?: (saved: boolean) => void }) {
+  const params = useParams<{ campaignId?: string, positionId?: string }>()
+  const searchParams = useSearchParams()
+  const campaignId = params?.campaignId ?? ""
+  const positionId = params?.positionId ?? searchParams.get("positionId") ?? ""
+
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [groups, setGroups] = useState<InterviewRubricGroup[]>(interviewRubricGroups)
   const [scale, setScale] = useState<"5-level" | "3-level">("5-level")
 
@@ -402,30 +408,52 @@ export function InterviewRubricEditorPage() {
     ])
   }
 
+  const handleSave = async () => {
+    if (!positionId) return
+    setSaving(true)
+    setSaveMessage(null)
+    try {
+      await saveInterviewRubric(positionId, groups)
+      setSaveMessage("Rubric saved successfully.")
+      onStatusChange?.(true)
+      setTimeout(() => setSaveMessage(null), 3000)
+    } catch {
+      setSaveMessage("Failed to save.")
+      onStatusChange?.(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <HrShell
-      title="Interview Rubric Editor"
-      subtitle="Create, edit, organize, and review interview scoring criteria."
-    >
-      <div className="space-y-4">
-        <InterviewToolbar scale={scale} onScaleChange={setScale} onAddGroup={addGroup} />
-        <div className="overflow-x-auto pb-2">
-          <InterviewRubricTable groups={groups} setGroups={setGroups} />
+    <div className="space-y-4 pt-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold text-foreground">Interview Rubric Editor</h2>
+        <p className="text-sm text-muted-foreground">Define and edit criteria for AI to evaluate candidate interviews.</p>
+      </div>
+      <InterviewToolbar scale={scale} onScaleChange={setScale} onAddGroup={addGroup} />
+      <div className="overflow-x-auto pb-2">
+        <InterviewRubricTable groups={groups} setGroups={setGroups} />
+      </div>
+      <div className="flex justify-between items-center mt-4">
+        <div
+          className={cn(
+            "flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold shadow-sm",
+            productWeight === 100
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+              : "border-amber-300 bg-amber-50 text-amber-800",
+          )}
+        >
+          <AlertTriangle className="h-4 w-4" />
+          Product Knowledge total is {productWeight}/100%
         </div>
-        <div className="flex justify-end">
-          <div
-            className={cn(
-              "flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold shadow-sm",
-              productWeight === 100
-                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                : "border-amber-300 bg-amber-50 text-amber-800",
-            )}
-          >
-            <AlertTriangle className="h-4 w-4" />
-            Product Knowledge total is {productWeight}/100%
-          </div>
+        <div className="flex items-center gap-3">
+          {saveMessage && <span className="text-sm text-green-600 font-medium">{saveMessage}</span>}
+          <Button variant="outline" disabled={saving} onClick={handleSave}>
+            {saving ? "Saving..." : "Save Interview Rubric"}
+          </Button>
         </div>
       </div>
-    </HrShell>
+    </div>
   )
 }

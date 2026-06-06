@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FormMessage, UploadPanel } from "@/components/recruitment/common"
-import { formatApiError, getPublicJob, listCampaigns, submitCandidateApplication, type BackendCampaign } from "@/lib/recruitment/api"
+import { formatApiError, getPublicJob, listCampaigns, listPositions, submitCandidateApplication, listPublicPositions, type BackendCampaign, type BackendPosition } from "@/lib/recruitment/api"
 import {
   getJobBySlug,
   shbJobs,
@@ -47,26 +47,26 @@ function formatDate(value: string | null) {
   return date.toLocaleDateString("vi-VN")
 }
 
-function jobFromCampaign(campaign: BackendCampaign): Job {
-  const jdLines = (campaign.jd_text ?? "")
+function jobFromPosition(position: BackendPosition): Job {
+  const jdLines = (position.jd_text ?? "")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
 
   return {
-    id: campaign.id,
-    slug: campaign.id,
-    title: campaign.title,
-    shortDescription: jdLines[0] ?? "Backend campaign is published and accepting candidate applications.",
-    department: "Backend campaign",
+    id: position.id,
+    slug: position.id,
+    title: position.title,
+    shortDescription: jdLines[0] ?? "Backend position is published and accepting candidate applications.",
+    department: "Backend position",
     location: "To be confirmed",
     type: "Full-time",
-    deadline: formatDate(campaign.deadline_at),
-    quantity: 1,
+    deadline: "Rolling",
+    quantity: position.headcount,
     responsibilities: jdLines.slice(0, 4).length > 0 ? jdLines.slice(0, 4) : ["Review the job description configured by HR."],
     requirements: jdLines.slice(4, 8).length > 0 ? jdLines.slice(4, 8) : ["Submit a CV and valid email to continue the hiring flow."],
     benefits: ["AI-assisted screening", "Professional test invitation", "Structured interview process"],
-    otherInfo: [`Campaign status: ${campaign.status}`, `Campaign ID: ${campaign.id}`],
+    otherInfo: [`Position status: ${position.status}`, `Position ID: ${position.id}`],
   }
 }
 
@@ -177,18 +177,18 @@ export function JobListPage() {
   useEffect(() => {
     let mounted = true
     setLoading(true)
-    listCampaigns()
-      .then((campaigns) => {
+    listPublicPositions()
+      .then((positions: BackendPosition[]) => {
         if (!mounted) return
-        const activeJobs = campaigns.filter((campaign) => campaign.status === "ACTIVE").map(jobFromCampaign)
+        const activeJobs = positions.filter((pos: BackendPosition) => pos.status === "PUBLISHED").map(jobFromPosition)
         if (activeJobs.length > 0) {
           setJobs(activeJobs)
           setMessage({ type: "success", text: `Loaded ${activeJobs.length} published backend jobs.` })
         } else {
-          setMessage({ type: "warning", text: "No published backend campaigns yet. Showing local demo jobs." })
+          setMessage({ type: "warning", text: "No published backend positions yet. Showing local demo jobs." })
         }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (mounted) setMessage({ type: "warning", text: `${formatApiError(error)} Showing local demo jobs.` })
       })
       .finally(() => {
@@ -347,8 +347,8 @@ export function JobDetailPage() {
     getPublicJob(jobSlug)
       .then((campaign) => {
         if (!mounted) return
-        setJob(jobFromCampaign(campaign))
-        setMessage({ type: "success", text: "Loaded public job from backend." })
+        setJob(jobFromPosition(campaign))
+        setMessage({ type: "success", text: "Loaded public position from backend." })
       })
       .catch((error) => {
         if (mounted) setMessage({ type: "error", text: formatApiError(error, "Could not load public job.") })
@@ -456,7 +456,7 @@ export function JobApplyPage() {
     getPublicJob(jobSlug)
       .then((campaign) => {
         if (!mounted) return
-        const backendJob = jobFromCampaign(campaign)
+        const backendJob = jobFromPosition(campaign)
         setJob(backendJob)
         setForm((current) => ({ ...current, jobTitle: backendJob.title, workLocation: backendJob.location }))
         setMessage(null)

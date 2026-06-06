@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { HrShell } from "@/components/recruitment/app-shell"
-import { listCampaigns, createCampaign, BackendCampaign, formatApiError } from "@/lib/recruitment/api"
+import { listCampaigns, createCampaign, closeCampaign, BackendCampaign, formatApiError } from "@/lib/recruitment/api"
 
 export default function CampaignsPage() {
   const router = useRouter()
@@ -75,6 +76,15 @@ export default function CampaignsPage() {
     }
   }
 
+  const handleHideCampaign = async (id: string) => {
+    try {
+      await closeCampaign(id)
+      setCampaigns(campaigns.map(c => c.id === id ? { ...c, status: "CLOSED" } : c))
+    } catch (err) {
+      alert(formatApiError(err, "Failed to hide campaign."))
+    }
+  }
+
   return (
     <HrShell title="Campaigns" subtitle="Quản lý danh sách các chiến dịch tuyển dụng">
       <div className="space-y-6">
@@ -98,8 +108,7 @@ export default function CampaignsPage() {
                 <TableRow>
                   <TableHead>Campaign Name</TableHead>
                   <TableHead>Department</TableHead>
-                  <TableHead>Start Date</TableHead>
-                  <TableHead>End Date</TableHead>
+                  <TableHead>Start / End Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -118,17 +127,31 @@ export default function CampaignsPage() {
                     <TableRow key={camp.id}>
                       <TableCell className="font-medium text-foreground">{camp.title}</TableCell>
                       <TableCell>{(camp as any).department_scope || "N/A"}</TableCell>
-                      <TableCell>{camp.created_at ? format(new Date(camp.created_at), "MMM d, yyyy") : "N/A"}</TableCell>
-                      <TableCell>{camp.deadline_at ? format(new Date(camp.deadline_at), "MMM d, yyyy") : "N/A"}</TableCell>
                       <TableCell>
-                        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-800">
+                        <div className="text-sm">
+                          <div>{camp.start_date ? format(new Date(camp.start_date), "dd/MM/yyyy") : "N/A"}</div>
+                          <div className="text-xs text-muted-foreground">{camp.deadline_at ? format(new Date(camp.deadline_at), "dd/MM/yyyy") : "N/A"}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className={cn(
+                          "rounded-md px-2 py-1 text-xs font-medium",
+                          camp.status === "ACTIVE" ? "bg-green-100 text-green-800" :
+                          camp.status === "CLOSED" ? "bg-red-100 text-red-800" :
+                          "bg-slate-100 text-slate-800"
+                        )}>
                           {camp.status}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-2">
                         <Button variant="outline" size="sm" onClick={() => router.push(`/hr/campaigns/${camp.id}`)}>
                           Xem chi tiết
                         </Button>
+                        {camp.status !== "CLOSED" && (
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleHideCampaign(camp.id)}>
+                            Ẩn
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
