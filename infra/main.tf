@@ -85,6 +85,24 @@ module "backend_ec2" {
   tags                 = merge(local.common_tags, { Role = "backend" })
 }
 
+module "test_ec2" {
+  source        = "./modules/ec2"
+  name          = "test"
+  ami_id        = var.ec2_ami_id
+  instance_type = var.frontend_instance_type
+  subnet_id     = module.vpc.public_subnet_id
+  vpc_id        = module.vpc.vpc_id
+  key_name      = aws_key_pair.ec2_key_pair.key_name
+  ingress_rules = [
+    { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+    { from_port = 8000, to_port = 8000, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+    { from_port = 8001, to_port = 8001, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+    { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
+  ]
+  iam_instance_profile = module.iam.ec2_instance_profile_name
+  tags                 = merge(local.common_tags, { Role = "test" })
+}
+
 module "elasticache" {
   source          = "./modules/elasticache"
   cluster_id      = "hls-redis"

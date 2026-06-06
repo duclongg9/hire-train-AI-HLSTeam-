@@ -104,7 +104,7 @@ data "aws_iam_policy_document" "ec2_policy" {
     actions   = ["ecr:GetAuthorizationToken"]
     resources = ["*"]
   }
-  
+
   statement {
     effect    = "Allow"
     actions   = [
