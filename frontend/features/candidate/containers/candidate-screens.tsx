@@ -631,42 +631,13 @@ export function InterviewRoomScreen() {
           <Card className="rounded-lg border-white/10 bg-white/5 p-4 text-white flex flex-col">
             <div className="flex justify-between items-center mb-3">
               <h2 className="font-semibold">Live transcript</h2>
-              {state === "candidate-speaking" && !isEditing && (
-                <Button size="sm" variant="outline" className="h-7 text-xs bg-white/10 border-white/20 text-white" onClick={() => { setIsEditing(true); setCandidateDraft("I chose to prioritize..."); }}>
-                  Tạm dừng & Sửa Text
-                </Button>
-              )}
             </div>
             <div className="space-y-2 text-sm text-white/70 flex-1 overflow-y-auto">
               {transcript.map((t, i) => (
                 <p key={i}><span className={t.speaker === "AI" ? "text-blue-300 font-medium" : "text-[#F37021] font-medium"}>{t.speaker}:</span> {t.text}</p>
               ))}
               
-              {state === "candidate-speaking" && (
-                isEditing ? (
-                  <div className="mt-3 flex flex-col gap-2 bg-black/20 p-3 rounded-lg border border-white/10">
-                    <span className="text-[#F37021] font-medium text-xs">Edit your response before submitting:</span>
-                    <Textarea 
-                      value={candidateDraft} 
-                      onChange={(e) => setCandidateDraft(e.target.value)}
-                      className="bg-slate-900 border-white/20 text-white min-h-[80px]"
-                    />
-                    <div className="flex justify-end gap-2 mt-1">
-                      <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="text-white/70 hover:text-white">Hủy</Button>
-                      <Button size="sm" className="bg-[#0033A0] text-white hover:bg-[#00256f]" onClick={() => {
-                        setTranscript([...transcript, { speaker: "Candidate", text: candidateDraft }])
-                        setIsEditing(false)
-                        setState("ai-speaking")
-                        setCandidateDraft("")
-                      }}>
-                        Nộp câu trả lời
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="animate-pulse"><span className="text-[#F37021] font-medium">Candidate:</span> ...</p>
-                )
-              )}
+              
             </div>
           </Card>
           <Card className="rounded-lg border-white/10 bg-white/5 p-4 text-white">

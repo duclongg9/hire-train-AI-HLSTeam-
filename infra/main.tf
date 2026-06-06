@@ -188,7 +188,8 @@ resource "aws_iam_role_policy" "backend_ai_services" {
           # Transcribe permissions
           "transcribe:StartTranscriptionJob",
           "transcribe:GetTranscriptionJob",
-          "transcribe:StartStreamTranscription"
+          "transcribe:StartStreamTranscription",
+          "transcribe:StartStreamTranscriptionWebSocket"
         ]
         Resource = "*"
       },
