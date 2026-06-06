@@ -1,9 +1,0 @@
-{
-  "campaign_id": 1,
-  "role": "Frontend Developer",
-  "criteria": [
-    { "name": "React Knowledge", "weight": 40 },
-    { "name": "TypeScript", "weight": 30 },
-    { "name": "UI/UX", "weight": 30 }
-  ]
-}
