@@ -127,7 +127,7 @@ export default function CampaignsPage() {
                   campaigns.map((camp) => (
                     <TableRow key={camp.id}>
                       <TableCell className="font-medium text-foreground">{camp.title}</TableCell>
-                      <TableCell>{(camp as any).department_scope || "N/A"}</TableCell>
+                      <TableCell>{camp.department_scope || "N/A"}</TableCell>
                       <TableCell>
                         <div className="text-sm">
                           <div>{camp.start_date ? format(new Date(camp.start_date), "dd/MM/yyyy") : "N/A"}</div>

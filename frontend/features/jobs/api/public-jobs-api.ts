@@ -1,9 +1,5 @@
 import { request } from "@/shared/api/client"
-import type { BackendCampaign, BackendPosition, BackendCandidate, CandidateApplicationPayload } from "@/shared/api/backend-types"
-
-export function listCampaigns() {
-  return request<BackendCampaign[]>("/campaigns")
-}
+import type { BackendPosition, BackendCandidate, CandidateApplicationPayload } from "@/shared/api/backend-types"
 
 export function listPublicPositions() {
   return request<BackendPosition[]>(`/public/positions`)
@@ -49,5 +45,5 @@ export function submitCandidateApplication(payload: CandidateApplicationPayload)
   })
 }
 
-export type { BackendCampaign, BackendPosition, CandidateApplicationPayload }
+export type { BackendPosition, CandidateApplicationPayload }
 export { formatApiError } from "@/shared/api/client"
