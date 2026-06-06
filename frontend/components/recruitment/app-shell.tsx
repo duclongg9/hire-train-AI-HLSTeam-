@@ -30,7 +30,7 @@ const adminNav: NavItem[] = [
 
 const hrBaseNav: NavItem[] = [
   { href: "/hr", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/hr/campaigns/new", label: "New Campaign", icon: FileText },
+  { href: "/hr/campaigns", label: "Campaigns", icon: FileText },
 ]
 
 const hrCampaignNav = [

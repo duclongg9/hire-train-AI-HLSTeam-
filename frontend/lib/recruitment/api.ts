@@ -57,6 +57,18 @@ export interface BackendCampaign {
   updated_at: string
 }
 
+export interface BackendPosition {
+  id: string
+  campaign_id: string
+  title: string
+  headcount: number
+  budget: string | null
+  jd_text: string | null
+  candidate_count: number
+  created_at: string
+  updated_at: string
+}
+
 export interface BackendRubricCriterion {
   id: string
   campaign_id: string
@@ -321,6 +333,29 @@ export function updateCampaign(campaignId: string, payload: { title?: string; jd
   return request<BackendCampaign>(`/campaigns/${campaignId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  })
+}
+
+export function listPositions(campaignId: string) {
+  return request<BackendPosition[]>(`/campaigns/${campaignId}/positions`)
+}
+
+export function createPosition(campaignId: string, payload: { title: string; headcount: number; budget?: string | null; jd_text?: string | null }) {
+  return request<BackendPosition>(`/campaigns/${campaignId}/positions`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export function createPositionFromFile(campaignId: string, payload: { title: string; headcount: number; budget?: string | null }, file: File) {
+  const form = new FormData()
+  form.append("title", payload.title)
+  form.append("headcount", payload.headcount.toString())
+  if (payload.budget) form.append("budget", payload.budget)
+  form.append("file", file)
+  return request<BackendPosition>(`/campaigns/${campaignId}/positions/upload`, {
+    method: "POST",
+    body: form,
   })
 }
 
