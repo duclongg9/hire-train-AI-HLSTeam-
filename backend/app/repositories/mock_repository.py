@@ -19,9 +19,11 @@ from app.schemas.module1 import (
     InterviewEvent,
     InterviewInvitation,
     InterviewReport,
+    InterviewRubricGroup,
     InterviewSession,
     InterviewSessionStatus,
     InvitationStatus,
+    Position,
     RubricCategory,
     RubricCriterion,
     TestAttempt,
@@ -39,8 +41,10 @@ class MockRepository:
     def __init__(self) -> None:
         self.users: dict[UUID, User] = {}
         self.campaigns: dict[UUID, Campaign] = {}
+        self.positions: dict[UUID, Position] = {}
         self.rubric_criteria: dict[UUID, RubricCriterion] = {}
         self.test_questions: dict[UUID, TestQuestion] = {}
+        self.interview_rubrics: dict[UUID, list[InterviewRubricGroup]] = {}
         self.candidates: dict[UUID, Candidate] = {}
         self.candidate_scores: dict[UUID, CandidateScore] = {}
         self.stage_events: dict[UUID, CandidateStageEvent] = {}
@@ -112,55 +116,81 @@ class MockRepository:
         self.campaigns[campaign_id] = campaign
         return campaign
 
-    def list_rubric(self, campaign_id: UUID) -> list[RubricCriterion]:
-        return [item for item in self.rubric_criteria.values() if item.campaign_id == campaign_id]
+    def create_position(self, position: Position) -> Position:
+        self.positions[position.id] = position
+        return position
 
-    def replace_rubric(self, campaign_id: UUID, criteria: list[RubricCriterion]) -> list[RubricCriterion]:
-        for item_id in [item.id for item in self.list_rubric(campaign_id)]:
+    def list_positions(self, campaign_id: UUID) -> list[Position]:
+        return [pos for pos in self.positions.values() if pos.campaign_id == campaign_id]
+
+    def get_position(self, position_id: UUID) -> Position | None:
+        return self.positions.get(position_id)
+
+    def update_position(self, position_id: UUID, data: dict[str, Any]) -> Position | None:
+        position = self.get_position(position_id)
+        if not position:
+            return None
+        update_data = {key: value for key, value in data.items() if value is not None}
+        update_data["updated_at"] = now_utc()
+        position = position.model_copy(update=update_data)
+        self.positions[position_id] = position
+        return position
+
+    def list_rubric(self, position_id: UUID) -> list[RubricCriterion]:
+        return [item for item in self.rubric_criteria.values() if item.position_id == position_id]
+
+    def replace_rubric(self, position_id: UUID, criteria: list[RubricCriterion]) -> list[RubricCriterion]:
+        for item_id in [item.id for item in self.list_rubric(position_id)]:
             del self.rubric_criteria[item_id]
         for item in criteria:
             self.rubric_criteria[item.id] = item
         return criteria
 
-    def list_test_questions(self, campaign_id: UUID, published_only: bool = False) -> list[TestQuestion]:
-        questions = [item for item in self.test_questions.values() if item.campaign_id == campaign_id]
+    def list_interview_rubrics(self, position_id: UUID) -> list[InterviewRubricGroup]:
+        return self.interview_rubrics.get(position_id, [])
+
+    def replace_interview_rubrics(self, position_id: UUID, groups: list[InterviewRubricGroup]) -> list[InterviewRubricGroup]:
+        self.interview_rubrics[position_id] = groups
+        return groups
+
+    def list_test_questions(self, position_id: UUID, published_only: bool = False) -> list[TestQuestion]:
+        questions = [item for item in self.test_questions.values() if item.position_id == position_id]
         if published_only:
             questions = [item for item in questions if item.status == TestQuestionStatus.PUBLISHED]
         return sorted(questions, key=lambda item: item.order_index)
 
-    def replace_test_questions(self, campaign_id: UUID, questions: list[TestQuestion]) -> list[TestQuestion]:
-        for item_id in [item.id for item in self.list_test_questions(campaign_id)]:
+    def replace_test_questions(self, position_id: UUID, questions: list[TestQuestion]) -> list[TestQuestion]:
+        for item_id in [item.id for item in self.list_test_questions(position_id)]:
             del self.test_questions[item_id]
         for item in questions:
             self.test_questions[item.id] = item
         return questions
 
-    def publish_test_questions(self, campaign_id: UUID) -> list[TestQuestion]:
+    def publish_test_questions(self, position_id: UUID) -> list[TestQuestion]:
         published: list[TestQuestion] = []
-        for question in self.list_test_questions(campaign_id):
+        for question in self.list_test_questions(position_id):
             updated = question.model_copy(update={"status": TestQuestionStatus.PUBLISHED, "updated_at": now_utc()})
-            self.test_questions[question.id] = updated
+            self.test_questions[updated.id] = updated
             published.append(updated)
         return published
 
     def create_candidate(self, candidate: Candidate) -> Candidate:
-        if self.get_candidate_by_email(candidate.campaign_id, candidate.email):
+        if self.get_candidate_by_email(candidate.position_id, candidate.email):
             raise ValueError("Candidate already applied to this campaign.")
         self.candidates[candidate.id] = candidate
         return candidate
 
-    def list_candidates(self, campaign_id: UUID | None = None) -> list[Candidate]:
+    def list_candidates(self, position_id: UUID | None = None) -> list[Candidate]:
         candidates = list(self.candidates.values())
-        if campaign_id:
-            candidates = [candidate for candidate in candidates if candidate.campaign_id == campaign_id]
+        if position_id:
+            candidates = [candidate for candidate in candidates if candidate.position_id == position_id]
         return sorted(candidates, key=lambda candidate: candidate.created_at, reverse=True)
-
     def get_candidate(self, candidate_id: UUID) -> Candidate | None:
         return self.candidates.get(candidate_id)
 
-    def get_candidate_by_email(self, campaign_id: UUID, email: str) -> Candidate | None:
+    def get_candidate_by_email(self, position_id: UUID, email: str) -> Candidate | None:
         email = email.lower().strip()
-        return next((item for item in self.candidates.values() if item.campaign_id == campaign_id and item.email == email), None)
+        return next((c for c in self.candidates.values() if c.position_id == position_id and c.email.lower() == email.lower()), None)
 
     def update_candidate(self, candidate_id: UUID, data: dict[str, Any]) -> Candidate | None:
         candidate = self.get_candidate(candidate_id)
@@ -182,8 +212,8 @@ class MockRepository:
     def get_candidate_score(self, candidate_id: UUID) -> CandidateScore | None:
         return next((item for item in self.candidate_scores.values() if item.candidate_id == candidate_id), None)
 
-    def list_candidate_scores(self, campaign_id: UUID) -> list[CandidateScore]:
-        return [item for item in self.candidate_scores.values() if item.campaign_id == campaign_id]
+    def list_candidate_scores(self, position_id: UUID) -> list[CandidateScore]:
+        return [item for item in self.candidate_scores.values() if item.position_id == position_id]
 
     def create_stage_event(self, event: CandidateStageEvent) -> CandidateStageEvent:
         self.stage_events[event.id] = event
