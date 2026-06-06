@@ -42,6 +42,16 @@ module "iam" {
   tags                   = local.common_tags
 }
 
+resource "tls_private_key" "ec2_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "ec2_key_pair" {
+  key_name   = "${var.project_name}-ec2-key"
+  public_key = tls_private_key.ec2_key.public_key_openssh
+}
+
 module "frontend_ec2" {
   source        = "./modules/ec2"
   name          = "frontend"
@@ -49,9 +59,11 @@ module "frontend_ec2" {
   instance_type = var.frontend_instance_type
   subnet_id     = module.vpc.public_subnet_id
   vpc_id        = module.vpc.vpc_id
+  key_name      = aws_key_pair.ec2_key_pair.key_name
   ingress_rules = [
     { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
-    { from_port = 443, to_port = 443, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
+    { from_port = 443, to_port = 443, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+    { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
   ]
   iam_instance_profile = module.iam.ec2_instance_profile_name
   tags                 = merge(local.common_tags, { Role = "frontend" })
@@ -64,8 +76,10 @@ module "backend_ec2" {
   instance_type = var.backend_instance_type
   subnet_id     = module.vpc.private_subnet_id
   vpc_id        = module.vpc.vpc_id
+  key_name      = aws_key_pair.ec2_key_pair.key_name
   ingress_rules = [
-    { from_port = 8000, to_port = 8000, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id }
+    { from_port = 8000, to_port = 8000, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id },
+    { from_port = 22, to_port = 22, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id }
   ]
   iam_instance_profile = module.iam.ec2_instance_profile_name
   tags                 = merge(local.common_tags, { Role = "backend" })

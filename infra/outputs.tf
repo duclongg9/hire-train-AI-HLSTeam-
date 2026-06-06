@@ -22,4 +22,9 @@ output "ecr_registry_url" { value = split("/", module.ecr.repository_url)[0] }
 output "github_actions_role_arn" { value = module.iam.github_actions_role_arn }
 output "oidc_provider_arn" { value = module.iam.oidc_provider_arn }
 output "secrets_manager_name" { value = module.secrets.secret_name }
+
+output "ec2_private_key" {
+  value     = tls_private_key.ec2_key.private_key_pem
+  sensitive = true
+}
 # Root module — output declarations defined in task 12
