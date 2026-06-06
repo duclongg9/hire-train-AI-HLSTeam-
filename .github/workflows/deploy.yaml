@@ -86,6 +86,6 @@ jobs:
               "docker pull ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:frontend-latest",
               "docker stop hls-frontend || true",
               "docker rm hls-frontend || true",
-              "docker run -d --name hls-frontend -p 3000:3000 --restart always -e BACKEND_PRIVATE_URL=http://${{ secrets.BACKEND_PRIVATE_IP }}:8000 ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:frontend-latest"
+              "docker run -d --name hls-frontend -p 80:3000 --restart always -e BACKEND_PRIVATE_URL=http://${{ secrets.BACKEND_PRIVATE_IP }}:8000 ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY_NAME }}:frontend-latest"
             ]' \
             --comment "Deploy Frontend Container"
