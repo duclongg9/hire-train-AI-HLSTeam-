@@ -592,3 +592,34 @@ async def websocket_proxy(websocket: WebSocket):
             await websocket.close(code=1011, reason="Internal server error")
         except:
             pass
+
+
+from pydantic import BaseModel
+
+class TranscribePresignRequest(BaseModel):
+    language_code: str = "vi-VN"
+    sample_rate: int = 16000
+    media_encoding: str = "pcm"
+
+
+@router.post("/candidate/interview/{token}/transcribe-presign")
+def get_transcribe_presigned_url(
+    token: str,
+    payload: TranscribePresignRequest = Body(...),
+    service: Module1Service = Depends(service_dep),
+):
+    from app.services.aws import transcribe_service
+    try:
+        service._valid_interview_invitation(token)
+    except Exception as e:
+        raise AppError(403, f"Token không hợp lệ hoặc đã hết hạn: {str(e)}")
+
+    try:
+        url = transcribe_service.get_presigned_websocket_url(
+            language_code=payload.language_code,
+            sample_rate=payload.sample_rate,
+            media_encoding=payload.media_encoding,
+        )
+        return {"url": url, "expires_in_seconds": 300}
+    except Exception as e:
+        raise AppError(500, f"Failed to generate presigned URL: {str(e)}")
