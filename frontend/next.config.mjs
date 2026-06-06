@@ -15,6 +15,10 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${process.env.BACKEND_PRIVATE_URL || 'http://localhost:8000'}/api/:path*`,
       },
+      {
+        source: '/health',
+        destination: `${process.env.BACKEND_PRIVATE_URL || 'http://localhost:8000'}/health`,
+      },
     ];
   },
 }
