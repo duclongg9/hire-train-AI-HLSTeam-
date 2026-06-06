@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { FormMessage, UploadPanel } from "@/shared/components/recruitment-common"
 import { formatApiError, getPublicJob, submitCandidateApplication } from "@/features/jobs/api/public-jobs-api"
 import { CandidateSiteHeader } from "@/features/jobs/components/candidate-site-header"
-import { jobFromCampaign } from "@/features/jobs/mappers/job-from-campaign"
+import { jobFromPosition } from "@/features/jobs/mappers/job-from-position"
 import { looksLikeUuid } from "@/features/jobs/utils/job-routing"
 import { getJobBySlug, type CandidateApplication, type Job } from "@/lib/recruitment/public-data"
 
@@ -42,9 +42,9 @@ export function JobApplyPage({ jobSlug }: { jobSlug?: string }) {
 
     let mounted = true
     getPublicJob(jobSlug)
-      .then((campaign) => {
+      .then((position) => {
         if (!mounted) return
-        const backendJob = jobFromCampaign(campaign)
+        const backendJob = jobFromPosition(position)
         setJob(backendJob)
         setForm((current) => ({ ...current, jobTitle: backendJob.title, workLocation: backendJob.location }))
         setMessage(null)

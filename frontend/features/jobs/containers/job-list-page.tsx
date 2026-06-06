@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { formatApiError, listCampaigns } from "@/features/jobs/api/public-jobs-api"
+import { formatApiError, listPublicPositions } from "@/features/jobs/api/public-jobs-api"
 import { CandidateHero } from "@/features/jobs/components/candidate-hero"
 import { CandidateSiteHeader } from "@/features/jobs/components/candidate-site-header"
 import { JobMeta } from "@/features/jobs/components/job-meta"
-import { jobFromCampaign } from "@/features/jobs/mappers/job-from-campaign"
+import { jobFromPosition } from "@/features/jobs/mappers/job-from-position"
 import { shbJobs, type Job } from "@/lib/recruitment/public-data"
 
 export function JobListPage() {
@@ -24,10 +24,10 @@ export function JobListPage() {
   useEffect(() => {
     let mounted = true
     setLoading(true)
-    listCampaigns()
-      .then((campaigns) => {
+    listPublicPositions()
+      .then((positions) => {
         if (!mounted) return
-        const activeJobs = campaigns.filter((campaign) => campaign.status === "ACTIVE").map(jobFromCampaign)
+        const activeJobs = positions.filter((position) => position.status === "PUBLISHED").map(jobFromPosition)
         if (activeJobs.length > 0) {
           setJobs(activeJobs)
         }

@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card"
 import { formatApiError, getPublicJob } from "@/features/jobs/api/public-jobs-api"
 import { CandidateSiteHeader } from "@/features/jobs/components/candidate-site-header"
 import { JobMeta } from "@/features/jobs/components/job-meta"
-import { jobFromCampaign } from "@/features/jobs/mappers/job-from-campaign"
+import { jobFromPosition } from "@/features/jobs/mappers/job-from-position"
 import { looksLikeUuid } from "@/features/jobs/utils/job-routing"
 import { getJobBySlug, type Job } from "@/lib/recruitment/public-data"
 
@@ -24,9 +24,9 @@ export function JobDetailPage({ jobSlug }: { jobSlug?: string }) {
 
     let mounted = true
     getPublicJob(jobSlug)
-      .then((campaign) => {
+      .then((position) => {
         if (!mounted) return
-        setJob(jobFromCampaign(campaign))
+        setJob(jobFromPosition(position))
       })
       .catch((error) => {
         if (mounted) {
