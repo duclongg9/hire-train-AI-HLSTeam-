@@ -65,7 +65,7 @@ jobs:
           ECR_REPOSITORY_NAME: ${{ secrets.ECR_REPOSITORY_NAME }}
           SECRETS_MANAGER_NAME: ${{ secrets.SECRETS_MANAGER_NAME }}
         run: |
-          envsubst < .github/scripts/ssm_backend.json > backend-params.json
+          envsubst < .github/scripts/ssm-backend.json > backend-params.json
 
       - name: Deploy Backend
         run: |
