@@ -40,7 +40,6 @@ import {
   pipelineStages,
   radarData,
   sourceData,
-  testQuestions,
   type Candidate,
   type CandidateStatus,
   type RubricSkill,
@@ -56,6 +55,7 @@ import {
   listLeaderboard,
   listTestQuestions,
   publishTestQuestions,
+  saveTestQuestions,
   finalDecision,
   inviteCandidateToInterview,
   inviteCandidateToTest,
@@ -78,8 +78,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 
 function useRouteCampaignId() {
-  const params = useParams<{ campaignId?: string }>()
-  return params?.campaignId ?? ""
+  const params = useParams<{ campaignId?: string; campaignid?: string }>()
+  const campaignId = params?.campaignId ?? params?.campaignid ?? ""
+  return isUuid(campaignId) ? campaignId : ""
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
 function rememberActiveCampaign(campaignId: string) {
@@ -90,7 +95,8 @@ function rememberActiveCampaign(campaignId: string) {
 
 function getRememberedCampaignId() {
   if (typeof window === "undefined") return ""
-  return window.localStorage.getItem("activeCampaignId") ?? ""
+  const campaignId = window.localStorage.getItem("activeCampaignId") ?? ""
+  return isUuid(campaignId) ? campaignId : ""
 }
 
 function toCandidateStatus(status: string): CandidateStatus {
@@ -154,7 +160,27 @@ function mapBackendTestQuestion(question: BackendTestQuestion): TestQuestion {
     options,
     correctAnswer: options[correctIndex >= 0 ? correctIndex : 0] ?? options[0] ?? "",
     difficulty: question.difficulty === "Hard" || question.difficulty === "Easy" ? question.difficulty : "Medium",
-    relatedSkill: question.skill_tag ?? "Backend generated",
+    relatedSkill: question.skill_tag ?? "Mock Quicktest",
+  }
+}
+
+function toBackendTestQuestionInput(question: TestQuestion, index: number) {
+  const optionIds = ["A", "B", "C", "D"]
+  const options = question.options.slice(0, 4).map((option, optionIndex) => ({
+    id: optionIds[optionIndex] ?? `O${optionIndex + 1}`,
+    text: option,
+  }))
+  const correctIndex = Math.max(0, question.options.findIndex((option) => option === question.correctAnswer))
+  return {
+    question_text: question.question,
+    question_type: "multiple_choice",
+    difficulty: question.difficulty,
+    skill_tag: question.relatedSkill,
+    options,
+    correct_option_id: options[correctIndex]?.id ?? options[0]?.id ?? null,
+    explanation: null,
+    status: "APPROVED" as const,
+    order_index: index + 1,
   }
 }
 
@@ -540,7 +566,7 @@ export function RubricScreen() {
 export function TestReviewScreen() {
   const router = useRouter()
   const campaignId = useRouteCampaignId() || getRememberedCampaignId()
-  const [questions, setQuestions] = useState<TestQuestion[]>(testQuestions)
+  const [questions, setQuestions] = useState<TestQuestion[]>([])
   const [editing, setEditing] = useState<TestQuestion | null>(null)
   const [open, setOpen] = useState(false)
   const [loadingQuestions, setLoadingQuestions] = useState(false)
@@ -571,7 +597,8 @@ export function TestReviewScreen() {
           setQuestions(backendQuestions.map(mapBackendTestQuestion))
           setMessage({ type: "success", text: `Loaded ${backendQuestions.length} backend test questions.` })
         } else {
-          setMessage({ type: "warning", text: "No backend test questions yet. Generate them from the saved rubric." })
+          setQuestions([])
+          setMessage({ type: "warning", text: "No test questions yet. Add questions or load a draft sample, then publish the test." })
         }
       })
       .catch((error) => {
@@ -620,7 +647,7 @@ export function TestReviewScreen() {
     try {
       const generated = await generateTestQuestions(campaignId, 15)
       setQuestions(generated.map(mapBackendTestQuestion))
-      setMessage({ type: "success", text: `Generated ${generated.length} questions from backend.` })
+      setMessage({ type: "success", text: `Loaded ${generated.length} draft questions. Review or edit them before publishing.` })
     } catch (error) {
       setMessage({ type: "error", text: formatApiError(error, "Could not generate test questions.") })
     } finally {
@@ -636,6 +663,11 @@ export function TestReviewScreen() {
     setPublishing(true)
     setMessage(null)
     try {
+      if (questions.length < 10 || questions.length > 20) {
+        throw new Error("Professional test must contain 10-20 questions before publishing.")
+      }
+      const saved = await saveTestQuestions(campaignId, questions.map(toBackendTestQuestionInput))
+      setQuestions(saved.map(mapBackendTestQuestion))
       await publishTestQuestions(campaignId)
       setMessage({ type: "success", text: "Test questions published. Moving to leaderboard." })
       setPublishing(false)
@@ -647,7 +679,7 @@ export function TestReviewScreen() {
   }
 
   return (
-    <HrShell title="Test Review" subtitle="Review AI generated multiple-choice questions before publishing the candidate test.">
+    <HrShell title="Test Review" subtitle="Create, review, and publish the Quicktest questions candidates will receive in round 2.">
       <div className="space-y-6">
         {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -659,7 +691,7 @@ export function TestReviewScreen() {
           <div className="flex gap-2">
             <Button variant="outline" disabled={generating || publishing} onClick={generate}>
               <RefreshCw className="mr-2 h-4 w-4" />
-              {generating ? "Generating..." : "Generate"}
+              {generating ? "Loading..." : "Load Draft Sample"}
             </Button>
             <Button variant="outline" onClick={() => openEditor()}>
               <Plus className="mr-2 h-4 w-4" />

@@ -1,8 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import json
 from enum import Enum
 from typing import Any, TypeVar
-from uuid import UUID
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import UUID, uuid4
 
 import psycopg2
 from psycopg2.extras import Json, RealDictCursor, register_uuid
@@ -31,10 +33,15 @@ register_uuid()
 
 ModelT = TypeVar("ModelT")
 
+def _psycopg2_database_url(database_url: str) -> str:
+    """Drop Prisma-only query params before passing the URL to libpq."""
+    parts = urlsplit(database_url)
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "pgbouncer"]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 class SupabaseRepository:
     def __init__(self) -> None:
-        self.database_url = settings.DATABASE_URL
+        self.database_url = _psycopg2_database_url(settings.DATABASE_URL)
         self.secure_failures: dict[str, int] = {}
 
     def _connect(self):
@@ -53,6 +60,49 @@ class SupabaseRepository:
         if row is None:
             return None
         return model_cls(**dict(row))
+
+    def _row_to_test_question(self, row: dict[str, Any]) -> TestQuestion | None:
+        data = dict(row)
+        data["question_type"] = data.get("question_type") or "multiple_choice"
+        data["order_index"] = data.get("order_index") or 0
+        data["status"] = data.get("status") or "PUBLISHED"
+        options = data.get("options")
+        if isinstance(options, str):
+            try:
+                options = json.loads(options)
+            except json.JSONDecodeError:
+                options = []
+        if not isinstance(options, list):
+            options = []
+        data["options"] = options
+        try:
+            return TestQuestion(**data)
+        except Exception as exc:
+            print(f"[DB] Skipping invalid test question row {data.get('id')}: {exc}")
+            return None
+
+    def _position_id_for_campaign(self, campaign_id: UUID) -> UUID:
+        row = self._fetch_one(
+            "select id from public.positions where campaign_id = %s order by created_at asc limit 1",
+            (campaign_id,),
+        )
+        if row:
+            return row["id"]
+
+        campaign = self._fetch_one("select title, jd_text from public.campaigns where id = %s", (campaign_id,))
+        title = campaign["title"] if campaign else "Quicktest Position"
+        jd_text = campaign["jd_text"] if campaign else None
+        position_id = uuid4()
+        created = self._execute_returning(
+            """
+            insert into public.positions
+              (id, campaign_id, title, headcount, budget, jd_text, candidate_count)
+            values (%s, %s, %s, %s, %s, %s, %s)
+            returning id
+            """,
+            (position_id, campaign_id, title, 1, None, jd_text, 0),
+        )
+        return created["id"]
 
     def _fetch_one(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         with self._connect() as conn:
@@ -146,68 +196,88 @@ class SupabaseRepository:
         return self._update_by_id("campaigns", campaign_id, data, Campaign)
 
     def list_rubric(self, campaign_id: UUID) -> list[RubricCriterion]:
-        rows = self._fetch_all("select * from public.rubric_criteria where campaign_id = %s order by created_at", (campaign_id,))
+        rows = self._fetch_all(
+            """
+            select rc.*, p.campaign_id as campaign_id
+            from public.rubric_criteria rc
+            join public.positions p on p.id = rc.position_id
+            where p.campaign_id = %s
+            order by rc.created_at
+            """,
+            (campaign_id,),
+        )
         return [self._row_to_model(RubricCriterion, row) for row in rows]
 
     def replace_rubric(self, campaign_id: UUID, criteria: list[RubricCriterion]) -> list[RubricCriterion]:
+        position_id = self._position_id_for_campaign(campaign_id)
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from public.rubric_criteria where campaign_id = %s", (str(campaign_id),))
+                cur.execute("delete from public.rubric_criteria where position_id = %s", (str(position_id),))
                 rows = []
                 for item in criteria:
                     cur.execute(
                         """
                         insert into public.rubric_criteria
-                          (id, campaign_id, category, name, weight, description, created_at, updated_at)
+                          (id, position_id, category, name, weight, description, created_at, updated_at)
                         values (%s, %s, %s, %s, %s, %s, %s, %s)
                         returning *
                         """,
-                        tuple(self._param(value) for value in (item.id, item.campaign_id, item.category, item.name, item.weight, item.description, item.created_at, item.updated_at)),
+                        tuple(self._param(value) for value in (item.id, position_id, item.category, item.name, item.weight, item.description, item.created_at, item.updated_at)),
                     )
                     rows.append(cur.fetchone())
                 conn.commit()
-        return [self._row_to_model(RubricCriterion, row) for row in rows]
+        return [self._row_to_model(RubricCriterion, {**row, "campaign_id": campaign_id}) for row in rows]
 
     def list_test_questions(self, campaign_id: UUID, published_only: bool = False) -> list[TestQuestion]:
-        sql = "select * from public.test_questions where campaign_id = %s"
+        sql = """
+            select tq.*, p.campaign_id as campaign_id
+            from public.test_questions tq
+            join public.positions p on p.id = tq.position_id
+            where p.campaign_id = %s
+        """
         params: tuple[Any, ...] = (campaign_id,)
         if published_only:
-            sql += " and status = %s"
+            sql += " and tq.status = %s"
             params = (campaign_id, "PUBLISHED")
-        sql += " order by order_index asc, created_at asc"
+        sql += " order by tq.order_index asc, tq.created_at asc"
         rows = self._fetch_all(sql, params)
-        return [self._row_to_model(TestQuestion, row) for row in rows]
+        questions = [self._row_to_test_question(row) for row in rows]
+        return [question for question in questions if question is not None]
 
     def replace_test_questions(self, campaign_id: UUID, questions: list[TestQuestion]) -> list[TestQuestion]:
+        position_id = self._position_id_for_campaign(campaign_id)
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("delete from public.test_questions where campaign_id = %s", (str(campaign_id),))
+                cur.execute("delete from public.test_questions where position_id = %s", (str(position_id),))
                 rows = []
                 for item in questions:
                     cur.execute(
                         """
                         insert into public.test_questions
-                          (id, campaign_id, question_text, question_type, difficulty, skill_tag, options, correct_option_id, explanation, status, order_index, created_at, updated_at)
+                          (id, position_id, question_text, question_type, difficulty, skill_tag, options, correct_option_id, explanation, status, order_index, created_at, updated_at)
                         values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         returning *
                         """,
-                        tuple(self._param(value) for value in (item.id, item.campaign_id, item.question_text, item.question_type, item.difficulty, item.skill_tag, item.options, item.correct_option_id, item.explanation, item.status, item.order_index, item.created_at, item.updated_at)),
+                        tuple(self._param(value) for value in (item.id, position_id, item.question_text, item.question_type, item.difficulty, item.skill_tag, item.options, item.correct_option_id, item.explanation, item.status, item.order_index, item.created_at, item.updated_at)),
                     )
                     rows.append(cur.fetchone())
                 conn.commit()
-        return [self._row_to_model(TestQuestion, row) for row in rows]
+        questions = [self._row_to_test_question({**row, "campaign_id": campaign_id}) for row in rows]
+        return [question for question in questions if question is not None]
 
     def publish_test_questions(self, campaign_id: UUID) -> list[TestQuestion]:
+        position_id = self._position_id_for_campaign(campaign_id)
         rows = self._fetch_all(
             """
             update public.test_questions
             set status = 'PUBLISHED', updated_at = now()
-            where campaign_id = %s
+            where position_id = %s
             returning *
             """,
-            (campaign_id,),
+            (position_id,),
         )
-        return [self._row_to_model(TestQuestion, row) for row in rows]
+        questions = [self._row_to_test_question({**row, "campaign_id": campaign_id}) for row in rows]
+        return [question for question in questions if question is not None]
 
     def create_candidate(self, candidate: Candidate) -> Candidate:
         return self._insert_model("candidates", candidate, Candidate)
@@ -265,8 +335,22 @@ class SupabaseRepository:
 
     def save_test_attempt(self, attempt: TestAttempt) -> TestAttempt:
         existing = self._fetch_one("select id from public.test_attempts where id = %s", (attempt.id,))
-        data = attempt.model_dump(mode="python")
         if existing:
+            data = attempt.model_dump(
+                mode="python",
+                include={
+                    "status",
+                    "started_at",
+                    "submitted_at",
+                    "duration_seconds",
+                    "score",
+                    "max_score",
+                    "percentage",
+                    "answers",
+                    "ai_feedback",
+                    "updated_at",
+                },
+            )
             return self._update_by_id("test_attempts", attempt.id, data, TestAttempt)
         return self._insert_model("test_attempts", attempt, TestAttempt)
 

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from config import settings
 from app.core.errors import AppError
+from app.core.mock_quicktest import mock_quicktest_questions
 from app.core.security import validate_secure_password
 from app.core.tokens import generate_raw_token, hash_token
 from app.repositories.factory import get_repository
@@ -17,7 +18,9 @@ from app.schemas.module1 import (
     CampaignUpdate,
     Candidate,
     CandidateApplyRequest,
+
     CandidateCompareRequest,
+    CandidateQuicktestSessionRequest,
     CandidateScore,
     CandidateStageEvent,
     CandidateStatus,
@@ -37,6 +40,7 @@ from app.schemas.module1 import (
     InterviewSessionStatus,
     InvitationStatus,
     MockLoginRequest,
+
     RubricCriterion,
     RubricUpsertRequest,
     TestAttempt,
@@ -196,10 +200,9 @@ class Module1Service:
 
     def generate_test_questions(self, campaign_id: UUID, payload: GenerateTestQuestionsRequest) -> list[TestQuestion]:
         campaign = self._campaign_or_404(campaign_id)
-        rubric = self._rubric_or_error(campaign_id)
-        questions = self.ai.generate_test_questions(campaign_id, campaign.jd_text or "", rubric, payload.count)
+        questions = mock_quicktest_questions(campaign.id, campaign.title, campaign.jd_text, payload.count)
         saved = self.repo.replace_test_questions(campaign_id, questions)
-        self.repo.create_audit_log("TEST_QUESTIONS_GENERATED", "campaign", campaign_id, {"count": len(saved)})
+        self.repo.create_audit_log("MOCK_QUICKTEST_GENERATED", "campaign", campaign_id, {"count": len(saved), "source": "hackathon_mock"})
         return saved
 
     def list_test_questions(self, campaign_id: UUID) -> list[TestQuestion]:
@@ -321,11 +324,99 @@ class Module1Service:
     def compare_candidates(self, campaign_id: UUID, payload: CandidateCompareRequest) -> list[FinalReviewResponse]:
         return [self.final_review(candidate_id) for candidate_id in payload.candidate_ids]
 
+    def _create_quicktest_demo_candidate(self, campaign: Campaign, email: str | None = None) -> Candidate:
+        return self.repo.create_candidate(
+            Candidate(
+                campaign_id=campaign.id,
+                full_name="Quicktest Demo Candidate",
+                email=email or "quicktest.demo@example.com",
+                phone="0900000001",
+                cv_text="Mock candidate passed round 1 with credit analysis, collateral review and banking risk experience.",
+                cv_file_name="quicktest_demo.pdf",
+                status=CandidateStatus.CV_SCORED,
+            )
+        )
+
+    def _campaign_with_published_test(self) -> Campaign | None:
+        campaigns = self.repo.list_campaigns()
+        ordered = sorted(campaigns, key=lambda item: (item.status != CampaignStatus.ACTIVE, item.created_at), reverse=False)
+        for campaign in ordered:
+            if self.repo.list_test_questions(campaign.id, published_only=True):
+                return campaign
+        return None
+
+    def create_candidate_quicktest_session(self, payload: CandidateQuicktestSessionRequest) -> TokenLinkResponse:
+        email = payload.email.lower().strip() if payload.email else None
+        candidates = self.repo.list_candidates()
+        candidate = next((item for item in candidates if email and item.email == email), None)
+        campaign = self._campaign_or_404(payload.campaign_id) if payload.campaign_id else None
+        if candidate and campaign and candidate.campaign_id != campaign.id:
+            candidate = None
+        if not candidate and not email and not campaign:
+            eligible_statuses = {CandidateStatus.CV_SCORED, CandidateStatus.SHORTLISTED, CandidateStatus.TEST_INVITED, CandidateStatus.TEST_IN_PROGRESS}
+            candidate = next((item for item in candidates if item.status in eligible_statuses), None)
+        if not campaign and candidate:
+            campaign = self._campaign_or_404(candidate.campaign_id)
+        if not campaign:
+            campaign = self._campaign_with_published_test()
+        if not campaign:
+            raise AppError(400, "No campaign has published test questions yet. HR must publish the test first.")
+        questions = self.repo.list_test_questions(campaign.id, published_only=True)
+        if not questions:
+            raise AppError(400, "The test for this campaign has not been published yet.")
+        if not candidate:
+            candidate = self._create_quicktest_demo_candidate(campaign, email)
+
+        raw_token = generate_raw_token()
+        invitation = self.repo.create_test_invitation(
+            TestInvitation(
+                candidate_id=candidate.id,
+                campaign_id=candidate.campaign_id,
+                token_hash=hash_token(raw_token),
+                expires_at=now_utc() + timedelta(hours=settings.CANDIDATE_LINK_TTL_HOURS),
+            )
+        )
+        event = self.repo.create_email_event(
+            EmailEvent(
+                candidate_id=candidate.id,
+                campaign_id=candidate.campaign_id,
+                email_type=EmailType.TEST_INVITATION,
+                recipient_email=candidate.email,
+                subject="Your HireTrain AI Quicktest session",
+                body=f"Open your Quicktest link: /candidate/test/{raw_token}",
+            )
+        )
+        self.repo.update_candidate(candidate.id, {"status": CandidateStatus.TEST_INVITED})
+        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.campaign_id, token=raw_token, url=f"/candidate/test/{raw_token}", expires_at=invitation.expires_at, email_event=event)
+
+    # _ensure_published_mock_questions has been removed to require manual publication by HR.
+
+    def _score_quicktest_attempt(self, answers: list[dict[str, Any]], questions: list[TestQuestion]) -> dict[str, Any]:
+        question_map = {str(question.id): question for question in questions}
+        scored_answers = []
+        correct = 0
+        for answer in answers:
+            question = question_map.get(str(answer.get("question_id")))
+            selected = answer.get("selected_option_id")
+            is_correct = bool(question and selected == question.correct_option_id)
+            correct += 1 if is_correct else 0
+            scored_answers.append({**answer, "is_correct": is_correct})
+        max_score = len(questions)
+        percentage = round((correct / max_score) * 100, 2) if max_score else 0
+        return {
+            "score": correct,
+            "max_score": max_score,
+            "percentage": percentage,
+            "answers": scored_answers,
+            "ai_feedback": f"Candidate answered {correct} of {max_score} mock Quicktest questions correctly.",
+        }
+
     def invite_test(self, candidate_id: UUID) -> TokenLinkResponse:
         candidate = self._candidate_or_404(candidate_id)
-        questions = self.repo.list_test_questions(candidate.campaign_id, published_only=True)
+        campaign = self._campaign_or_404(candidate.campaign_id)
+        questions = self.repo.list_test_questions(campaign.id, published_only=True)
         if not questions:
-            raise AppError(400, "Published test questions are required before test invitation.")
+            raise AppError(400, "Test questions must be published before inviting candidates.")
         raw_token = generate_raw_token()
         invitation = self.repo.create_test_invitation(
             TestInvitation(
@@ -355,7 +446,13 @@ class Module1Service:
         candidate = self._candidate_or_404(invitation.candidate_id)
         campaign = self._campaign_or_404(invitation.campaign_id)
         questions = self.repo.list_test_questions(campaign.id, published_only=True)
-        return TestOpenResponse(candidate=candidate, campaign=campaign, invitation=invitation, questions=questions)
+        if not questions:
+            raise AppError(400, "The test for this campaign has not been published yet.")
+        safe_questions = [
+            question.model_copy(update={"correct_option_id": None, "explanation": None})
+            for question in questions
+        ]
+        return TestOpenResponse(candidate=candidate, campaign=campaign, invitation=invitation, questions=safe_questions)
 
     def start_test(self, token: str) -> TestStartResponse:
         invitation = self._valid_test_invitation(token)
@@ -378,10 +475,13 @@ class Module1Service:
             raise AppError(409, "Candidate cannot submit test twice for same invitation.")
         if not attempt:
             attempt = TestAttempt(candidate_id=invitation.candidate_id, campaign_id=invitation.campaign_id, test_invitation_id=invitation.id, status=TestAttemptStatus.IN_PROGRESS, started_at=now_utc())
-        questions = self.repo.list_test_questions(invitation.campaign_id, published_only=True)
+        campaign = self._campaign_or_404(invitation.campaign_id)
+        questions = self.repo.list_test_questions(campaign.id, published_only=True)
+        if not questions:
+            raise AppError(400, "The test for this campaign has not been published yet.")
         answers = [item.model_dump(mode="json") for item in payload.answers]
-        result = self.ai.score_test_attempt(answers, questions)
-        status = TestAttemptStatus.AUTO_SUBMITTED if payload.auto_submitted else TestAttemptStatus.SCORED
+        result = self._score_quicktest_attempt(answers, questions)
+        status = TestAttemptStatus.AUTO_SUBMITTED if payload.auto_submitted else TestAttemptStatus.SUBMITTED
         updated = attempt.model_copy(update={
             "status": status,
             "submitted_at": now_utc(),
@@ -568,4 +668,3 @@ def reset_module1_service_for_tests() -> Module1Service:
     global _service
     _service = None
     return get_module1_service()
-

@@ -21,7 +21,7 @@ from app.database.models import Base  # Import tất cả models để Alembic d
 config = context.config
 
 # Ghi đè sqlalchemy.url bằng DATABASE_URL từ pydantic settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", settings.DIRECT_URL or settings.DATABASE_URL)
 
 # Setup logging từ alembic.ini
 if config.config_file_name is not None:

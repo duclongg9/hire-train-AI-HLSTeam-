@@ -14,10 +14,11 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     DEBUG: bool = False
 
-    BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
 
     STORAGE_PROVIDER: Literal["mock", "supabase"] = "mock"
     DATABASE_URL: str = ""
+    DIRECT_URL: str = ""
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
@@ -96,4 +97,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

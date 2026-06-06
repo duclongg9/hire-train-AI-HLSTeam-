@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import {
@@ -29,6 +29,7 @@ import {
   openCandidateTest,
   startCandidateTest,
   submitCandidateTest,
+  type BackendTestAttempt,
   type BackendTestQuestion,
 } from "@/lib/recruitment/api"
 import { cn } from "@/lib/utils"
@@ -45,6 +46,10 @@ function formatSeconds(seconds: number) {
 }
 
 type CandidateTestQuestion = TestQuestion & { optionIds: string[] }
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
 
 const demoTestQuestions: CandidateTestQuestion[] = testQuestions.map((question) => ({
   ...question,
@@ -257,33 +262,82 @@ export function ThankYouScreen() {
 }
 
 export function CandidateTestScreen() {
+  const router = useRouter()
   const params = useParams<{ testToken?: string }>()
   const testToken = params?.testToken ?? ""
+  const isBackendTest = Boolean(testToken && testToken !== "demo-token")
   const [current, setCurrent] = useState(0)
-  const [questions, setQuestions] = useState<CandidateTestQuestion[]>(demoTestQuestions)
+  const [questions, setQuestions] = useState<CandidateTestQuestion[]>(isBackendTest ? [] : demoTestQuestions)
+  const [loadingTest, setLoadingTest] = useState(isBackendTest)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [timeLeft, setTimeLeft] = useState(15 * 60)
   const [durationSeconds, setDurationSeconds] = useState(15 * 60)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<BackendTestAttempt | null>(null)
   const [timeUpOpen, setTimeUpOpen] = useState(false)
+  const [securityWarnings, setSecurityWarnings] = useState(0)
+  const answersRef = useRef<Record<string, string>>({})
+  const timeLeftRef = useRef(timeLeft)
+  const durationSecondsRef = useRef(durationSeconds)
+  const submittedRef = useRef(false)
+  const submittingRef = useRef(false)
+  const securityWarningsRef = useRef(0)
+  const lastSecurityWarningAtRef = useRef(0)
   const [message, setMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null)
+  const currentQuestionIds = new Set(questions.map((item) => item.id))
+  const backendQuestionIds = new Set(questions.map((item) => item.id).filter(isUuid))
+  const question = questions[current] ?? questions[0]
+  const answeredCount = Object.keys(answers).filter((questionId) => currentQuestionIds.has(questionId)).length
+  const browserWarningCount = Math.min(securityWarnings, 3)
+
+  const goToNextRound = () => {
+    setTimeUpOpen(false)
+    router.push("/candidate/interview/demo-token/waiting-room")
+  }
 
   useEffect(() => {
-    if (!testToken || testToken === "demo-token") {
+    answersRef.current = answers
+  }, [answers])
+
+  useEffect(() => {
+    timeLeftRef.current = timeLeft
+  }, [timeLeft])
+
+  useEffect(() => {
+    durationSecondsRef.current = durationSeconds
+  }, [durationSeconds])
+
+  useEffect(() => {
+    submittedRef.current = submitted
+  }, [submitted])
+
+  useEffect(() => {
+    submittingRef.current = submitting
+  }, [submitting])
+
+  useEffect(() => {
+    if (!isBackendTest) {
+      setQuestions(demoTestQuestions)
+      setLoadingTest(false)
       setMessage({ type: "warning", text: "Using local demo questions. Open this route with a backend test token for the live test flow." })
       return
     }
 
     let mounted = true
+    setLoadingTest(true)
     openCandidateTest(testToken)
       .then(async (test) => {
         if (!mounted) return
-        const mappedQuestions = test.questions.map(mapBackendQuestion)
-        setQuestions(mappedQuestions.length > 0 ? mappedQuestions : demoTestQuestions)
+        const mappedQuestions = test.questions.map(mapBackendQuestion).filter((item) => isUuid(item.id))
+        setQuestions(mappedQuestions)
+        setAnswers({})
+        answersRef.current = {}
+        setCurrent(0)
         setTimeLeft(test.duration_seconds)
         setDurationSeconds(test.duration_seconds)
-        setMessage({ type: "success", text: `Loaded ${mappedQuestions.length} backend test questions for ${test.candidate.full_name}.` })
+        setLoadingTest(false)
+        setMessage(mappedQuestions.length > 0 ? { type: "success", text: `Loaded ${mappedQuestions.length} backend test questions for ${test.candidate.full_name}.` } : { type: "error", text: "Backend returned no valid UUID questions for this test token." })
         try {
           await startCandidateTest(testToken)
         } catch {
@@ -291,57 +345,111 @@ export function CandidateTestScreen() {
         }
       })
       .catch((error) => {
-        if (mounted) setMessage({ type: "error", text: `${formatApiError(error, "Could not open test token.")} Using local demo questions.` })
+        if (mounted) {
+          setQuestions([])
+          setLoadingTest(false)
+          setMessage({ type: "error", text: formatApiError(error, "Could not open test token.") })
+        }
       })
 
     return () => {
       mounted = false
     }
-  }, [testToken])
+  }, [isBackendTest, testToken])
 
   useEffect(() => {
-    if (submitted) return
+    if (submitted || submitting || loadingTest || questions.length === 0) return
     const interval = window.setInterval(() => {
       setTimeLeft((value) => {
         if (value <= 1) {
           window.clearInterval(interval)
-          setSubmitted(true)
-          setTimeUpOpen(true)
+          timeLeftRef.current = 0
+          void submit(true)
           return 0
         }
-        return value - 1
+        const nextValue = value - 1
+        timeLeftRef.current = nextValue
+        return nextValue
       })
     }, 1000)
     return () => window.clearInterval(interval)
-  }, [submitted])
+  }, [loadingTest, questions.length, submitted, submitting])
 
-  const question = questions[current] ?? questions[0]
-  const answeredCount = Object.keys(answers).length
-
-  const submit = async (autoSubmitted = false) => {
-    if (!question) return
+  async function submit(autoSubmitted = false) {
+    if (!question || submittingRef.current || submittedRef.current) return
+    const validBackendQuestionIds = new Set(questions.map((item) => item.id).filter(isUuid))
+    if (isBackendTest && (loadingTest || validBackendQuestionIds.size === 0)) {
+      setMessage({ type: "error", text: "Backend test questions are still loading. Please wait before submitting." })
+      return
+    }
+    const submitAnswers = Object.entries(answersRef.current)
+      .filter(([question_id]) => !isBackendTest || validBackendQuestionIds.has(question_id))
+      .map(([question_id, selected_option_id]) => ({ question_id, selected_option_id }))
+    if (isBackendTest && submitAnswers.length === 0) {
+      setMessage({ type: "error", text: "Please answer at least one backend test question before submitting." })
+      return
+    }
+    submittingRef.current = true
     if (!testToken || testToken === "demo-token") {
+      submittedRef.current = true
       setSubmitted(true)
+      if (autoSubmitted) setTimeUpOpen(true)
       setMessage({ type: "success", text: "Demo test submitted locally. Backend submission requires a real test token." })
+      submittingRef.current = false
       return
     }
 
     setSubmitting(true)
     setMessage(null)
     try {
-      await submitCandidateTest(testToken, {
-        answers: Object.entries(answers).map(([question_id, selected_option_id]) => ({ question_id, selected_option_id })),
+      const savedAttempt = await submitCandidateTest(testToken, {
+        answers: submitAnswers,
         auto_submitted: autoSubmitted,
-        duration_seconds: durationSeconds - timeLeft,
+        duration_seconds: durationSecondsRef.current - timeLeftRef.current,
       })
+      setResult(savedAttempt)
+      submittedRef.current = true
       setSubmitted(true)
-      setMessage({ type: "success", text: "Test submitted to backend successfully." })
+      if (autoSubmitted) setTimeUpOpen(true)
+      setMessage({ type: "success", text: "Test submitted to backend successfully and saved to the database." })
     } catch (error) {
       setMessage({ type: "error", text: formatApiError(error, "Could not submit test.") })
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
+
+  useEffect(() => {
+    if (submitted || submitting || loadingTest || questions.length === 0) return
+
+    const registerFocusExit = () => {
+      if (submittedRef.current || submittingRef.current) return
+      const now = Date.now()
+      if (now - lastSecurityWarningAtRef.current < 1500) return
+      lastSecurityWarningAtRef.current = now
+      const nextWarningCount = Math.min(securityWarningsRef.current + 1, 3)
+      securityWarningsRef.current = nextWarningCount
+      setSecurityWarnings(nextWarningCount)
+      if (nextWarningCount >= 3) {
+        setMessage({ type: "warning", text: "Browser focus changed multiple times. The test is being auto-submitted for review integrity." })
+        void submit(true)
+        return
+      }
+      setMessage({ type: "warning", text: `Browser focus changed. Warning ${nextWarningCount}/3 before auto-submit.` })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") registerFocusExit()
+    }
+
+    window.addEventListener("blur", registerFocusExit)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      window.removeEventListener("blur", registerFocusExit)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [loadingTest, questions.length, submitted, submitting])
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -350,7 +458,7 @@ export function CandidateTestScreen() {
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Professional Test</h1>
-            <p className="text-sm text-muted-foreground">{answeredCount}/{questions.length} answered</p>
+            <p className="text-sm text-muted-foreground">{answeredCount}/{questions.length} answered - {browserWarningCount}/3 browser warnings</p>
           </div>
           <div className={cn("inline-flex items-center gap-2 rounded-lg px-4 py-2 font-mono text-xl font-bold", timeLeft <= 120 ? "bg-red-100 text-red-700" : "bg-white text-foreground")}>
             <Clock className="h-5 w-5" />
@@ -359,7 +467,33 @@ export function CandidateTestScreen() {
         </div>
 
         {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
+        {loadingTest ? <FormMessage type="warning">Loading backend Quicktest questions. Please wait before answering.</FormMessage> : null}
         {submitted ? <FormMessage type="success">Test submitted. Answers are locked.</FormMessage> : null}
+
+        {submitted ? (
+          <Card className="mt-4 rounded-lg border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Interstitial Stage</p>
+                <h2 className="mt-1 text-xl font-bold text-foreground">Quicktest completed</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Your round 2 score has been saved. Please prepare webcam and microphone before the interview room opens.</p>
+              </div>
+              <div className="rounded-lg bg-white px-5 py-4 text-center shadow-sm">
+                <p className="text-xs font-medium uppercase text-muted-foreground">Round 2 score</p>
+                <p className="mt-1 text-3xl font-bold text-emerald-700">{result?.percentage ?? 0}%</p>
+                <Button className="mt-4 bg-[#0033A0] text-white hover:bg-[#00256f]" onClick={goToNextRound}>
+                  Continue to Round 3
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ) : null}
+
+        {questions.length === 0 && !loadingTest ? (
+          <Card className="mt-4 rounded-lg border-red-200 bg-red-50 p-5 text-sm text-red-700 shadow-sm">
+            No valid backend questions are available for this test token. Please create a new Quicktest session.
+          </Card>
+        ) : null}
 
         <div className="mt-4 grid gap-6 lg:grid-cols-[220px_1fr]">
           <Card className="rounded-lg p-4 shadow-sm">
@@ -382,49 +516,55 @@ export function CandidateTestScreen() {
             <Progress className="mt-4" value={(answeredCount / Math.max(questions.length, 1)) * 100} />
           </Card>
 
-          <Card className="rounded-lg p-5 shadow-sm">
-            <div className="mb-3 flex flex-wrap gap-2">
-              <StatusPill tone="blue">{question.relatedSkill}</StatusPill>
-              <StatusPill tone={question.difficulty === "Hard" ? "red" : question.difficulty === "Medium" ? "orange" : "green"}>{question.difficulty}</StatusPill>
-            </div>
-            <h2 className="text-xl font-semibold text-foreground">{question.question}</h2>
-            <div className="mt-5 grid gap-3">
-              {question.options.map((option, index) => (
-                <button
-                  key={option}
-                  type="button"
-                  disabled={submitted}
-                  onClick={() => setAnswers({ ...answers, [question.id]: question.optionIds[index] ?? option })}
-                  className={cn(
-                    "rounded-lg border p-4 text-left text-sm transition",
-                    answers[question.id] === (question.optionIds[index] ?? option) ? "border-[#0033A0] bg-blue-50 text-[#0033A0]" : "bg-white hover:border-[#0033A0]",
-                    submitted && "cursor-not-allowed opacity-75",
-                  )}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-              <Button variant="outline" onClick={() => setCurrent(Math.max(0, current - 1))} disabled={current === 0}>
-                Previous
-              </Button>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setTimeLeft(1)} disabled={submitted}>
-                  Simulate Time Up
-                </Button>
-                <Button variant="outline" onClick={() => setCurrent(Math.min(questions.length - 1, current + 1))} disabled={current === questions.length - 1}>
-                  Next
-                </Button>
-                <Button className="bg-[#F37021] text-white hover:bg-[#d95f18]" disabled={submitted || submitting} onClick={() => submit(false)}>
-                  {submitting ? "Submitting..." : "Submit Test"}
-                </Button>
+          {question ? (
+            <Card className="rounded-lg p-5 shadow-sm">
+              <div className="mb-3 flex flex-wrap gap-2">
+                <StatusPill tone="blue">{question.relatedSkill}</StatusPill>
+                <StatusPill tone={question.difficulty === "Hard" ? "red" : question.difficulty === "Medium" ? "orange" : "green"}>{question.difficulty}</StatusPill>
               </div>
-            </div>
-          </Card>
+              <h2 className="text-xl font-semibold text-foreground">{question.question}</h2>
+              <div className="mt-5 grid gap-3">
+                {question.options.map((option, index) => (
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={submitted || loadingTest || questions.length === 0 || (isBackendTest && !isUuid(question.id))}
+                    onClick={() => setAnswers({ ...answers, [question.id]: question.optionIds[index] ?? option })}
+                    className={cn(
+                      "rounded-lg border p-4 text-left text-sm transition",
+                      answers[question.id] === (question.optionIds[index] ?? option) ? "border-[#0033A0] bg-blue-50 text-[#0033A0]" : "bg-white hover:border-[#0033A0]",
+                      submitted && "cursor-not-allowed opacity-75",
+                    )}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+                <Button variant="outline" onClick={() => setCurrent(Math.max(0, current - 1))} disabled={current === 0}>
+                  Previous
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setTimeLeft(1)} disabled={submitted || loadingTest || questions.length === 0}>
+                    Simulate Time Up
+                  </Button>
+                  <Button variant="outline" onClick={() => setCurrent(Math.min(questions.length - 1, current + 1))} disabled={current === questions.length - 1}>
+                    Next
+                  </Button>
+                  <Button className="bg-[#F37021] text-white hover:bg-[#d95f18]" disabled={submitted || submitting || loadingTest || (isBackendTest && backendQuestionIds.size === 0)} onClick={() => submit(false)}>
+                    {submitting ? "Submitting..." : "Submit Test"}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <Card className="rounded-lg p-5 text-sm text-muted-foreground shadow-sm">
+              Quicktest questions are loading.
+            </Card>
+          )}
         </div>
       </main>
-      <TestTimeUpModal open={timeUpOpen} onClose={() => setTimeUpOpen(false)} />
+      <TestTimeUpModal open={timeUpOpen} onClose={goToNextRound} />
     </div>
   )
 }

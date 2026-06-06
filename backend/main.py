@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -17,12 +18,16 @@ async def lifespan(app: FastAPI):
     print(f"[{settings.PROJECT_NAME}] Starting up...")
     service = get_module1_service()
     database_connected = service.check_database()
+    app.state.database_connected_at_startup = database_connected
     if settings.STORAGE_PROVIDER == "mock":
         print("Running with mock storage. Supabase is not active.")
     elif settings.STORAGE_PROVIDER == "supabase" and database_connected:
         print("[DB] Connected to Supabase/PostgreSQL successfully.")
     elif settings.STORAGE_PROVIDER == "supabase":
-        raise RuntimeError("STORAGE_PROVIDER=supabase but the database is unavailable.")
+        message = "[DB] Supabase/PostgreSQL is unavailable at startup."
+        if settings.APP_ENV == "production":
+            raise RuntimeError(message)
+        print(f"{message} Continuing because APP_ENV={settings.APP_ENV}.")
     yield
     print(f"[{settings.PROJECT_NAME}] Shutting down...")
 
@@ -57,6 +62,12 @@ async def app_error_handler(request: Request, exc: AppError):
 @app.exception_handler(NotImplementedError)
 async def not_implemented_handler(request: Request, exc: NotImplementedError):
     return JSONResponse(status_code=501, content={"detail": str(exc)})
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    traceback.print_exc()
+    detail = str(exc) if settings.APP_ENV == "development" else "Internal server error."
+    return JSONResponse(status_code=500, content={"detail": detail or exc.__class__.__name__})
 
 
 @app.get("/")

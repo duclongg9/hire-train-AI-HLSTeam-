@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -420,6 +420,17 @@ class CandidateApplyRequest(APIModel):
         return validate_email_value(value)
 
 
+class CandidateQuicktestSessionRequest(APIModel):
+    email: str | None = None
+    campaign_id: UUID | None = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_optional_email(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return validate_email_value(value)
+
 class CandidateStatusUpdateRequest(APIModel):
     status: CandidateStatus
     reason: str | None = None
@@ -523,4 +534,3 @@ class HealthResponse(APIModel):
     ai_provider: str
     interview_provider: str
     email_provider: str
-

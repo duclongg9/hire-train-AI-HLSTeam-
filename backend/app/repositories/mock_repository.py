@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.core.mock_quicktest import mock_quicktest_questions
 from app.schemas.module1 import (
     AuditLog,
     Campaign,
@@ -65,18 +66,69 @@ class MockRepository:
         self.users[hr.id] = hr
 
         jd = (
-            "We are hiring a Customer Support Specialist to handle customer inquiries across email, chat, and phone. "
-            "The role requires strong communication, CRM experience, problem solving, empathy, conflict resolution, "
-            "and the ability to document customer cases clearly. Candidates should have experience managing difficult "
-            "conversations, prioritizing urgent issues, and collaborating with product or operations teams."
+            "SHB tuyen Chuyen vien Quan he Khach hang doanh nghiep. Ung vien can co ky nang phan tich bao cao tai chinh, "
+            "tham dinh tin dung, danh gia tai san bao dam, nhan dien rui ro no xau va tuan thu quy trinh bao mat thong tin. "
+            "Vong 2 Quicktest tap trung vao hard skills trong nghiep vu ngan hang, khong su dung cau hoi ky nang mem."
         )
-        self._seed_mock_data()
+        campaign = Campaign(
+            title="SHB Chuyen vien Quan he Khach hang - Quicktest Mock",
+            jd_text=jd,
+            status=CampaignStatus.ACTIVE,
+            public_token="mock-shb-qhkh",
+            created_by=hr.id,
+        )
+        self.campaigns[campaign.id] = campaign
+        self.replace_rubric(
+            campaign.id,
+            [
+                RubricCriterion(campaign_id=campaign.id, category=RubricCategory.hard_skill, name="Phan tich bao cao tai chinh", weight=30, description="Doc hieu dong tien, don bay va kha nang tra no."),
+                RubricCriterion(campaign_id=campaign.id, category=RubricCategory.hard_skill, name="Tham dinh tin dung", weight=30, description="Kiem tra muc dich vay, ho so va phuong an tra no."),
+                RubricCriterion(campaign_id=campaign.id, category=RubricCategory.hard_skill, name="Tai san bao dam", weight=20, description="Danh gia gia tri, phap ly va thanh khoan cua tai san."),
+                RubricCriterion(campaign_id=campaign.id, category=RubricCategory.hard_skill, name="Nhan dien rui ro va bao mat", weight=20, description="Nhan dien rui ro no xau va bao ve thong tin khach hang."),
+            ],
+        )
+        self.replace_test_questions(campaign.id, mock_quicktest_questions(campaign.id, campaign.title, campaign.jd_text, 12))
 
-    def _seed_mock_data(self):
+        candidate = Candidate(
+            campaign_id=campaign.id,
+            full_name="Nguyen Minh Anh",
+            email="quicktest.demo@example.com",
+            phone="0900000001",
+            cv_text="Quan he khach hang doanh nghiep voi kinh nghiem phan tich bao cao tai chinh, tham dinh tin dung, tai san bao dam va quan tri rui ro.",
+            cv_file_name="nguyen_minh_anh.pdf",
+            status=CandidateStatus.CV_SCORED,
+        )
+        self.candidates[candidate.id] = candidate
+        self.save_candidate_score(
+            CandidateScore(
+                candidate_id=candidate.id,
+                campaign_id=campaign.id,
+                score=86,
+                badge=CandidateBadge.STRONG,
+                ai_reasoning="Mock round 1 score: CV shows relevant credit analysis, collateral review and banking risk experience.",
+                score_breakdown={"hard_skills": 86, "risk_control": 84},
+                risk_flags=[],
+            )
+        )
+        self.create_stage_event(
+            CandidateStageEvent(
+                candidate_id=candidate.id,
+                campaign_id=campaign.id,
+                from_status=CandidateStatus.APPLIED,
+                to_status=CandidateStatus.CV_SCORED,
+                reason="Mock candidate passed round 1 CV screening.",
+                actor_id=hr.id,
+                metadata={"source": "hackathon_seed"},
+            )
+        )
+        self._seed_mock_data(campaign.id)
+
+    def _seed_mock_data(self, campaign_id: UUID):
         self.create_audit_log(
             action="MOCK_SEED_CREATED",
-            entity_type="storage",
-            metadata={"mode": "production_clean"},
+            entity_type="campaign",
+            entity_id=campaign_id,
+            metadata={"mode": "hackathon_quicktest", "test_questions": 12},
             actor_email="system@hiretrain.ai",
         )
 

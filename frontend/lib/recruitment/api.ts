@@ -1,11 +1,18 @@
-const DEFAULT_API_ORIGIN = "http://localhost:8001"
+const DEFAULT_API_ORIGIN = "http://localhost:8000"
+const FALLBACK_API_ORIGINS = ["http://localhost:8001", "http://127.0.0.1:8000", "http://127.0.0.1:8001"]
+const REQUEST_TIMEOUT_MS = 30000
 
 function normalizeApiOrigin(value?: string) {
   const raw = (value || DEFAULT_API_ORIGIN).replace(/\/$/, "")
   return raw.endsWith("/api") ? raw.slice(0, -4) : raw
 }
 
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)))
+}
+
 export const API_ORIGIN = normalizeApiOrigin(process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL)
+export const API_ORIGINS = uniqueValues([API_ORIGIN, ...FALLBACK_API_ORIGINS.map((origin) => normalizeApiOrigin(origin))])
 export const API_BASE_URL = `${API_ORIGIN}/api`
 
 export type BackendUserRole = "ADMIN" | "HR_MANAGER"
@@ -226,6 +233,16 @@ export function formatApiError(error: unknown, fallback = "Backend request faile
   return fallback
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit) {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: init.signal ?? controller.signal })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   const body = init.body as BodyInit | null | undefined
@@ -237,26 +254,40 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken()
   if (token) headers.set("Authorization", `Bearer ${token}`)
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers,
-  })
+  const attemptedUrls: string[] = []
+  let lastNetworkError: unknown = null
 
-  if (!response.ok) {
-    const fallback = `Backend request failed with ${response.status}.`
-    let detail: unknown = undefined
+  for (const origin of API_ORIGINS) {
+    const url = `${origin}/api${path}`
+    attemptedUrls.push(url)
+    let response: Response
     try {
-      const body = (await response.json()) as { detail?: unknown }
-      detail = body.detail
-    } catch {
-      detail = undefined
+      response = await fetchWithTimeout(url, { ...init, headers })
+    } catch (error) {
+      lastNetworkError = error
+      continue
     }
-    const parsed = parseErrorDetail(detail, fallback)
-    throw new ApiError(response.status, parsed.message, detail, parsed.fieldErrors)
+
+    if (!response.ok) {
+      const fallback = `Backend request failed with ${response.status}.`
+      let detail: unknown = undefined
+      try {
+        const body = (await response.json()) as { detail?: unknown }
+        detail = body.detail
+      } catch {
+        detail = undefined
+      }
+      const parsed = parseErrorDetail(detail, fallback)
+      throw new ApiError(response.status, parsed.message, detail, parsed.fieldErrors)
+    }
+
+    if (response.status === 204) return undefined as T
+    return response.json() as Promise<T>
   }
 
-  if (response.status === 204) return undefined as T
-  return response.json() as Promise<T>
+  const attempted = attemptedUrls.join(", ")
+  const message = `Failed to reach backend. Tried: ${attempted}`
+  throw new ApiError(0, message, lastNetworkError)
 }
 
 export function healthCheck() {
@@ -368,6 +399,26 @@ export function listTestQuestions(campaignId: string) {
   return request<BackendTestQuestion[]>(`/campaigns/${campaignId}/test-questions`)
 }
 
+export function saveTestQuestions(
+  campaignId: string,
+  questions: Array<{
+    question_text: string
+    question_type?: string
+    difficulty?: string | null
+    skill_tag?: string | null
+    options: Array<Record<string, unknown>>
+    correct_option_id?: string | null
+    explanation?: string | null
+    status?: "DRAFT" | "APPROVED" | "PUBLISHED"
+    order_index?: number
+  }>,
+) {
+  return request<BackendTestQuestion[]>(`/campaigns/${campaignId}/test-questions`, {
+    method: "PUT",
+    body: JSON.stringify({ questions }),
+  })
+}
+
 export function publishTestQuestions(campaignId: string) {
   return request<BackendTestQuestion[]>(`/campaigns/${campaignId}/test-questions/publish`, {
     method: "POST",
@@ -432,6 +483,13 @@ export function scoreCampaignCandidates(campaignId: string, candidateId?: string
 export function inviteCandidateToTest(candidateId: string) {
   return request<BackendTokenLink>(`/candidates/${candidateId}/invite-test`, {
     method: "POST",
+  })
+}
+
+export function createCandidateQuicktestSession(email?: string | null, campaignId?: string | null) {
+  return request<BackendTokenLink>("/candidate/quicktest/session", {
+    method: "POST",
+    body: JSON.stringify({ email: email || null, campaign_id: campaignId || null }),
   })
 }
 

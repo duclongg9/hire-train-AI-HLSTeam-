@@ -97,10 +97,16 @@ function ShellFrame({
   useEffect(() => {
     if (role !== "HR Manager") return
     const routeCampaignId = pathname.match(/\/hr\/campaigns\/([^/]+)/)?.[1]
+    const isValidId = routeCampaignId && routeCampaignId !== "new"
     const storedCampaignId = window.localStorage.getItem("activeCampaignId")
-    const nextCampaignId = routeCampaignId || storedCampaignId || ""
+    const cleanStoredId = storedCampaignId && storedCampaignId !== "new" ? storedCampaignId : ""
+    const nextCampaignId = (isValidId ? routeCampaignId : null) || cleanStoredId || ""
     setActiveCampaignId(nextCampaignId)
-    if (routeCampaignId) window.localStorage.setItem("activeCampaignId", routeCampaignId)
+    if (isValidId) {
+      window.localStorage.setItem("activeCampaignId", routeCampaignId)
+    } else if (storedCampaignId === "new") {
+      window.localStorage.removeItem("activeCampaignId")
+    }
   }, [pathname, role])
 
   const navItems = useMemo(() => {

@@ -17,6 +17,7 @@ from app.schemas.module1 import (
     CampaignUpdate,
     CandidateApplyRequest,
     CandidateCompareRequest,
+    CandidateQuicktestSessionRequest,
     CandidateScoreRequest,
     CandidateStatusUpdateRequest,
     FinalDecisionRequest,
@@ -308,6 +309,10 @@ def invite_test(candidate_id: UUID, service: Module1Service = Depends(service_de
     return service.invite_test(candidate_id)
 
 
+@router.post("/candidate/quicktest/session")
+def create_candidate_quicktest_session(payload: CandidateQuicktestSessionRequest, service: Module1Service = Depends(service_dep)):
+    return service.create_candidate_quicktest_session(payload)
+
 @router.post("/candidates/{candidate_id}/invite-interview")
 def invite_interview(candidate_id: UUID, service: Module1Service = Depends(service_dep)):
     return service.invite_interview(candidate_id)
@@ -395,7 +400,7 @@ async def websocket_proxy(websocket: WebSocket):
     await websocket.accept()
 
     try:
-        # Nhận tin nhắn đầu tiên chứa token và role từ client
+        # NhÃ¡ÂºÂ­n tin nhÃ¡ÂºÂ¯n Ã„â€˜Ã¡ÂºÂ§u tiÃƒÂªn chÃ¡Â»Â©a token vÃƒÂ  role tÃ¡Â»Â« client
         init_msg = await websocket.receive_text()
         init_data = json.loads(init_msg)
         token = init_data.get("token")
@@ -426,7 +431,7 @@ async def websocket_proxy(websocket: WebSocket):
         async with websockets.connect(gemini_ws_url, extra_headers={"User-Agent": "FastAPI-Proxy"}) as gemini_ws:
             print("[WebSocket] Connected to Gemini. Starting bidi proxy...")
 
-            # Khởi tạo session (setup) với Gemini
+            # KhÃ¡Â»Å¸i tÃ¡ÂºÂ¡o session (setup) vÃ¡Â»â€ºi Gemini
             setup_msg = {
                 "setup": {
                     "model": model,
@@ -468,7 +473,7 @@ async def websocket_proxy(websocket: WebSocket):
                 except Exception as e:
                     print(f"[WebSocket] gemini_to_client error: {e}")
 
-            # Chạy đồng thời 2 task
+            # ChÃ¡ÂºÂ¡y Ã„â€˜Ã¡Â»â€œng thÃ¡Â»Âi 2 task
             await asyncio.gather(
                 client_to_gemini(),
                 gemini_to_client()
