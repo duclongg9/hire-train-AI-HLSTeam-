@@ -69,16 +69,16 @@ export function CandidateDrawer({
                 <div>
                   <h3 className="font-semibold text-foreground">Strengths</h3>
                   <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                    {candidate.strengths.map((item) => (
-                      <li key={item}>- {item}</li>
+                    {candidate.strengths.map((item, idx) => (
+                      <li key={idx}>- <span className="font-medium text-foreground">{item.trait}:</span> {item.evidence}</li>
                     ))}
                   </ul>
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Weaknesses</h3>
                   <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                    {candidate.weaknesses.map((item) => (
-                      <li key={item}>- {item}</li>
+                    {candidate.weaknesses.map((item, idx) => (
+                      <li key={idx}>- <span className="font-medium text-foreground">{item.trait}:</span> {item.evidence}</li>
                     ))}
                   </ul>
                 </div>
