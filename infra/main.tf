@@ -7,7 +7,13 @@ locals {
     
     # Update packages and install prerequisites
     apt-get update -y
-    apt-get install -y ca-certificates curl gnupg lsb-release
+    apt-get install -y ca-certificates curl gnupg lsb-release unzip
+    
+    # Install AWS CLI v2
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    ./aws/install
+    rm -rf awscliv2.zip aws/
     
     # Add Docker GPG key
     mkdir -p /etc/apt/keyrings
