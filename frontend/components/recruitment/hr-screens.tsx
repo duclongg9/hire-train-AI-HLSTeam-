@@ -397,15 +397,15 @@ export function HrDashboardScreen() {
 
 export function CreateCampaignScreen() {
   const router = useRouter()
-  const [form, setForm] = useState({ name: "Q3 Frontend Hiring", jobTitle: "Senior Frontend Engineer", deadline: "2026-07-15", description: "" })
+  const [form, setForm] = useState({ name: "Q3 Frontend Hiring", jobTitle: "Senior Frontend Engineer", startDate: "2026-06-01", endDate: "2026-07-15", department: "", description: "" })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
 
-  const saveCampaign = async () => {
+  const saveCampaign = async (status: "DRAFT" | "ACTIVE") => {
     setError("")
     setSuccess(false)
-    if (!form.name || !form.jobTitle || !form.deadline) {
+    if (!form.name || !form.jobTitle || !form.startDate || !form.endDate || !form.department) {
       setError("Missing required campaign fields.")
       return
     }
@@ -415,7 +415,10 @@ export function CreateCampaignScreen() {
       const created = await createCampaign({
         title: `${form.name} - ${form.jobTitle}`,
         jd_text: form.description || null,
-        deadline_at: form.deadline ? new Date(`${form.deadline}T23:59:59`).toISOString() : null,
+        start_date: form.startDate ? new Date(`${form.startDate}T00:00:00`).toISOString() : null,
+        deadline_at: form.endDate ? new Date(`${form.endDate}T23:59:59`).toISOString() : null,
+        department_scope: form.department,
+        status: status,
       })
       rememberActiveCampaign(created.id)
       setSuccess(true)
@@ -442,9 +445,26 @@ export function CreateCampaignScreen() {
               <Label htmlFor="job-title">Job Title</Label>
               <Input id="job-title" value={form.jobTitle} onChange={(event) => setForm({ ...form, jobTitle: event.target.value })} />
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="department">Department</Label>
+              <Select value={form.department} onValueChange={(value) => setForm({ ...form, department: value })}>
+                <SelectTrigger id="department">
+                  <SelectValue placeholder="Select a department" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Khối CNTT">Khối CNTT</SelectItem>
+                  <SelectItem value="Khối Khách hàng Cá nhân">Khối Khách hàng Cá nhân</SelectItem>
+                  <SelectItem value="Khối Vận hành">Khối Vận hành</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="deadline">Deadline</Label>
-              <Input id="deadline" type="date" value={form.deadline} onChange={(event) => setForm({ ...form, deadline: event.target.value })} />
+              <Label htmlFor="start-date">Start Date</Label>
+              <Input id="start-date" type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="end-date">End Date</Label>
+              <Input id="end-date" type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="description">Description optional</Label>
@@ -455,10 +475,13 @@ export function CreateCampaignScreen() {
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <Link href="/hr">
-            <Button variant="outline">Cancel</Button>
+            <Button variant="ghost">Cancel</Button>
           </Link>
-          <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" disabled={loading} onClick={saveCampaign}>
-            {loading ? "Creating..." : "Create Campaign"}
+          <Button variant="outline" className="border-gray-300 text-gray-700 bg-gray-50 hover:bg-gray-100" disabled={loading} onClick={() => saveCampaign("DRAFT")}>
+            Lưu Nháp (Draft)
+          </Button>
+          <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" disabled={loading} onClick={() => saveCampaign("ACTIVE")}>
+            {loading ? "Creating..." : "Tạo & Kích Hoạt (Active)"}
           </Button>
         </div>
       </div>
@@ -990,6 +1013,22 @@ function CandidateRankingTable({
                         }}
                       >
                         Gửi bài Test
+                      </Button>
+                    )}
+                    {candidate.status === "Rejected" && onQuickAction && (
+                      <Button 
+                        size="sm" 
+                        className="bg-[#c6203f] text-white hover:bg-[#a91935]"
+                        disabled={Boolean(busyAction)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onQuickAction(candidate, "Invite test", async () => {
+                            const link = await inviteCandidateToTest(candidate.id)
+                            return `Đã cứu ứng viên và chuyển vào Vòng 2: ${link.url}`
+                          })
+                        }}
+                      >
+                        Cứu ứng viên (Vòng 2)
                       </Button>
                     )}
                     {(candidate.status === "Test Sent" || candidate.status === "Interview") && onQuickAction && (

@@ -303,12 +303,7 @@ class Module1Service:
             raise AppError(400, "Candidate does not belong to this campaign.")
         score = self.ai.score_candidate(candidate, rubric)
         saved = self.repo.save_candidate_score(score)
-        
-        if saved.score < 50:
-            self._transition_candidate(candidate, CandidateStatus.REJECTED, "Auto-rejected due to low CV score")
-        else:
-            self._transition_candidate(candidate, CandidateStatus.CV_SCORED, "CV scored by AI")
-            
+        self._transition_candidate(candidate, CandidateStatus.CV_SCORED, "CV scored by AI")
         self.repo.create_audit_log("CANDIDATE_SCORED", "candidate", candidate.id, {"score": saved.score})
         return saved
 

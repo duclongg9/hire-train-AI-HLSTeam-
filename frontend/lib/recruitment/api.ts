@@ -310,7 +310,7 @@ export function getCampaign(campaignId: string) {
   return request<BackendCampaign>(`/campaigns/${campaignId}`)
 }
 
-export function createCampaign(payload: { title: string; jd_text?: string | null; deadline_at?: string | null }) {
+export function createCampaign(payload: { title: string; jd_text?: string | null; deadline_at?: string | null; start_date?: string | null; department_scope?: string | null; status?: string }) {
   return request<BackendCampaign>("/campaigns", {
     method: "POST",
     body: JSON.stringify(payload),
