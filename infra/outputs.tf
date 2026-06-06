@@ -7,6 +7,7 @@ output "frontend_public_ip" { value = module.frontend_ec2.public_ip }
 
 output "backend_instance_id" { value = module.backend_ec2.instance_id }
 output "backend_private_ip" { value = module.backend_ec2.private_ip }
+output "backend_public_ip"  { value = module.backend_ec2.public_ip }
 
 output "cache_endpoint" { value = module.elasticache.cache_endpoint }
 output "cache_port" { value = module.elasticache.cache_port }

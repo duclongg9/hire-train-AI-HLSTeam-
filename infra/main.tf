@@ -108,13 +108,13 @@ module "backend_ec2" {
   name          = "backend"
   ami_id        = var.ec2_ami_id
   instance_type = var.backend_instance_type
-  subnet_id     = module.vpc.private_subnet_id
+  subnet_id     = module.vpc.public_subnet_id
   vpc_id        = module.vpc.vpc_id
   key_name      = aws_key_pair.ec2_key_pair.key_name
   user_data     = local.docker_user_data
   ingress_rules = [
-    { from_port = 8000, to_port = 8000, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id },
-    { from_port = 22, to_port = 22, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id }
+    { from_port = 8000, to_port = 8000, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+    { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
   ]
   iam_instance_profile = module.iam.ec2_instance_profile_name
   tags                 = merge(local.common_tags, { Role = "backend" })
@@ -200,4 +200,15 @@ resource "local_file" "pem_file" {
   content         = tls_private_key.ec2_key.private_key_pem
   filename        = "${path.module}/ec2-key.pem"
   file_permission = "0400"
+}
+
+resource "aws_secretsmanager_secret" "ssh_key" {
+  name                    = "${var.project_name}-ssh-key"
+  recovery_window_in_days = 0
+  tags                    = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "ssh_key_val" {
+  secret_id     = aws_secretsmanager_secret.ssh_key.id
+  secret_string = tls_private_key.ec2_key.private_key_pem
 }
