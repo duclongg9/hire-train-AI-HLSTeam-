@@ -4,6 +4,10 @@ output "private_subnet_id" { value = module.vpc.private_subnet_id }
 
 output "frontend_instance_id" { value = module.frontend_ec2.instance_id }
 output "frontend_public_ip" { value = module.frontend_ec2.public_ip }
+output "frontend_public_dns" { value = module.frontend_ec2.public_dns }
+output "frontend_cloudfront_distribution_id" { value = module.frontend_cloudfront.distribution_id }
+output "frontend_cloudfront_domain_name" { value = module.frontend_cloudfront.domain_name }
+output "frontend_https_url" { value = module.frontend_cloudfront.https_url }
 
 output "backend_instance_id" { value = module.backend_ec2.instance_id }
 output "backend_private_ip" { value = module.backend_ec2.private_ip }

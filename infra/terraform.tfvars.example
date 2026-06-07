@@ -23,6 +23,8 @@ s3_assets_bucket_name = "hls-backend-assets-public"
 
 ecr_repository_name = "hls-backend"
 
+cloudfront_price_class = "PriceClass_100"
+
 github_org = "my-org"
 github_repo = "HLS-backend-base"
 github_branch = "main"

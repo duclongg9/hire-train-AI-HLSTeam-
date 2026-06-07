@@ -48,6 +48,12 @@ variable "s3_assets_bucket_name" { type = string }
 
 variable "ecr_repository_name" { type = string }
 
+variable "cloudfront_price_class" {
+  description = "CloudFront price class for the frontend distribution."
+  type        = string
+  default     = "PriceClass_100"
+}
+
 variable "github_org" {
   type = string
 }

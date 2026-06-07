@@ -13,6 +13,11 @@ output "public_ip" {
   value       = aws_instance.this.public_ip
 }
 
+output "public_dns" {
+  description = "The public DNS name of the EC2 instance. Empty string for instances without a public DNS name."
+  value       = aws_instance.this.public_dns
+}
+
 output "security_group_id" {
   description = "The ID of the security group attached to the EC2 instance."
   value       = aws_security_group.this.id

@@ -106,7 +106,7 @@ module "frontend_ec2" {
   subnet_id        = module.vpc.public_subnet_id
   vpc_id           = module.vpc.vpc_id
   key_name         = aws_key_pair.ec2_key_pair.key_name
-  user_data     = local.docker_user_data
+  user_data        = local.docker_user_data
   ingress_rules = [
     { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
     { from_port = 443, to_port = 443, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
@@ -114,6 +114,14 @@ module "frontend_ec2" {
   ]
   iam_instance_profile = module.iam.ec2_instance_profile_name
   tags                 = merge(local.common_tags, { Role = "frontend" })
+}
+
+module "frontend_cloudfront" {
+  source             = "./modules/cloudfront"
+  name               = "${var.project_name}-frontend"
+  origin_domain_name = module.frontend_ec2.public_dns
+  price_class        = var.cloudfront_price_class
+  tags               = merge(local.common_tags, { Role = "frontend-cdn" })
 }
 
 module "backend_ec2" {
@@ -126,7 +134,7 @@ module "backend_ec2" {
   subnet_id        = module.vpc.public_subnet_id
   vpc_id           = module.vpc.vpc_id
   key_name         = aws_key_pair.ec2_key_pair.key_name
-  user_data     = local.docker_user_data
+  user_data        = local.docker_user_data
   ingress_rules = [
     { from_port = 8000, to_port = 8000, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id },
     { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
