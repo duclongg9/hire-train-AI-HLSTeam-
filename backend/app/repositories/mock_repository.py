@@ -121,13 +121,22 @@ class MockRepository:
         return position
 
     def list_positions(self, campaign_id: UUID) -> list[Position]:
-        return [pos for pos in self.positions.values() if pos.campaign_id == campaign_id]
+        positions = [pos for pos in self.positions.values() if pos.campaign_id == campaign_id]
+        for pos in positions:
+            pos.candidate_count = len([c for c in self.candidates.values() if c.position_id == pos.id])
+        return positions
 
     def list_all_positions(self) -> list[Position]:
-        return list(self.positions.values())
+        positions = list(self.positions.values())
+        for pos in positions:
+            pos.candidate_count = len([c for c in self.candidates.values() if c.position_id == pos.id])
+        return positions
 
     def get_position(self, position_id: UUID) -> Position | None:
-        return self.positions.get(position_id)
+        pos = self.positions.get(position_id)
+        if pos:
+            pos.candidate_count = len([c for c in self.candidates.values() if c.position_id == pos.id])
+        return pos
 
     def update_position(self, position_id: UUID, data: dict[str, Any]) -> Position | None:
         position = self.get_position(position_id)
