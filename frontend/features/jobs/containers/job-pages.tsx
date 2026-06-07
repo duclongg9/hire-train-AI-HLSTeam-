@@ -94,14 +94,11 @@ function CandidateSiteHeader() {
           <a href="#talent-network" className="hover:text-[#c6203f]">
             Talent Network
           </a>
-          <Link href="/candidate/login" className="hover:text-[#c6203f]">
-            Đăng nhập
-          </Link>
         </nav>
-        <Link href="/candidate/login">
-          <Button className="bg-[#f37021] text-white hover:bg-[#d95f18]">
+        <Link href="/login">
+          <Button className="bg-[#004C97] text-white hover:bg-[#003875]">
             <UserRound className="mr-2 h-4 w-4" />
-            Ứng viên
+            HR Login
           </Button>
         </Link>
       </div>
@@ -131,11 +128,6 @@ function CandidateHero() {
             <a href="#open-jobs">
               <Button className="bg-[#f37021] text-white hover:bg-[#d95f18]">Xem việc làm</Button>
             </a>
-            <Link href="/candidate/login">
-              <Button variant="outline" className="border-white/40 bg-white/10 text-white hover:bg-white/20">
-                Đăng nhập ứng viên
-              </Button>
-            </Link>
           </div>
         </div>
         <Card className="rounded-lg border-white/20 bg-white/92 p-5 text-slate-900 shadow-xl">

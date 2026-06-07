@@ -20,14 +20,11 @@ export function CandidateSiteHeader() {
           <a href="#talent-network" className="hover:text-[#c6203f]">
             Talent Network
           </a>
-          <Link href="/candidate/login" className="hover:text-[#c6203f]">
-            Đăng nhập
-          </Link>
         </nav>
-        <Link href="/candidate/login">
-          <Button className="flex items-center gap-2 bg-[#f37021] px-6 text-white hover:bg-[#d95f18]">
+        <Link href="/login">
+          <Button className="flex items-center gap-2 bg-[#004C97] px-6 text-white hover:bg-[#003875]">
             <UserRound className="h-4 w-4" />
-            Ứng viên
+            HR Login
           </Button>
         </Link>
       </div>

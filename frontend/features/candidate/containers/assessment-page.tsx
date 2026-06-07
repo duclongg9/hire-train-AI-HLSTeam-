@@ -132,6 +132,7 @@ export default function AssessmentPage() {
   
   const [mounted, setMounted] = useState(false)
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false)
+  const [redirectCountdown, setRedirectCountdown] = useState(90) // 1m30s
   
   // Auth states
   const [isDeviceAuthorized, setIsDeviceAuthorized] = useState(false)
@@ -224,10 +225,19 @@ export default function AssessmentPage() {
   // Completed redirect
   useEffect(() => {
     if (store.stage !== "completed") return
-    const redirectTimer = window.setTimeout(() => {
-      router.push("/candidate/interview/demo-token/waiting-room")
-    }, 4000) // Give user 4 seconds to see their score
-    return () => window.clearTimeout(redirectTimer)
+    
+    const redirectInterval = setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(redirectInterval)
+          router.push("/candidate/interview/demo-token/waiting-room")
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    
+    return () => clearInterval(redirectInterval)
   }, [router, store.stage])
 
   const formatTime = (seconds: number) => {
@@ -521,6 +531,18 @@ export default function AssessmentPage() {
                 <p className="text-xl font-bold text-slate-800">{Object.keys(store.answers).length}/{generatedQuestions.length}</p>
                 <p className="text-xs text-slate-500">Số câu đã trả lời</p>
               </div>
+            </div>
+            <div className="mt-6 flex flex-col items-center gap-4 border-t pt-6">
+              <p className="text-sm font-medium text-slate-500">
+                Tự động chuyển tiếp sau: <span className="font-bold text-[#F37021]">{formatTime(redirectCountdown)}</span>
+              </p>
+              <Button 
+                onClick={() => router.push("/candidate/interview/demo-token/waiting-room")}
+                className="bg-[#004C97] px-8 py-6 text-white hover:bg-[#003875] w-full text-base shadow-md transition-all hover:-translate-y-0.5"
+              >
+                Chuyển sang bài thi tiếp theo ngay
+                <ChevronRight className="ml-2 h-5 w-5" />
+              </Button>
             </div>
           </Card>
         </motion.div>
