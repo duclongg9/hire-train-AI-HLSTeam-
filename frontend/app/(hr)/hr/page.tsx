@@ -1,5 +1,5 @@
-import { HrDashboardScreen } from "@/features/hr/containers/hr-screens"
+import { redirect } from "next/navigation"
 
-export default function HrPage() {
-  return <HrDashboardScreen />
+export default function HRRootPage() {
+  redirect("/hr/campaigns")
 }

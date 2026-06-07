@@ -68,6 +68,15 @@ data "aws_iam_policy_document" "github_ecr_policy" {
       "arn:aws:ssm:*:*:document/AWS-RunShellScript"
     ]
   }
+
+  statement {
+    effect    = "Allow"
+    actions   = [
+      "ec2:DescribeInstances",
+      "secretsmanager:GetSecretValue"
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "github_ecr_policy" {
@@ -104,7 +113,7 @@ data "aws_iam_policy_document" "ec2_policy" {
     actions   = ["ecr:GetAuthorizationToken"]
     resources = ["*"]
   }
-  
+
   statement {
     effect    = "Allow"
     actions   = [

@@ -55,7 +55,7 @@ export const shbJobs: Job[] = [
     otherInfo: [
       "Số lượng tuyển: 3",
       "Cấp bậc: Chuyên gia/CVCC",
-      "Hình thức phỏng vấn: Bài đánh giá năng lực và phỏng vấn AI trước vòng HR.",
+      "Hình thức đánh giá: Sơ loại trực tuyến thông minh (Trợ lý AI hỗ trợ) và Phỏng vấn trực tiếp với Hội đồng chuyên môn.",
     ],
   },
   {

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -17,6 +17,13 @@ class CampaignStatus(str, Enum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
     CLOSED = "CLOSED"
+
+
+class PositionStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
+    CLOSED = "CLOSED"
+
 
 
 class CandidateStatus(str, Enum):
@@ -151,14 +158,48 @@ class Campaign(APIModel):
     status: CampaignStatus = CampaignStatus.DRAFT
     public_token: str | None = None
     created_by: UUID | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     deadline_at: datetime | None = None
+
+
+class Position(APIModel):
+    id: UUID = Field(default_factory=uuid4)
+    campaign_id: UUID
+    title: str
+    headcount: int
+    budget: str | None = None
+    jd_text: str | None = None
+    candidate_count: int = 0
+    status: PositionStatus = PositionStatus.DRAFT
+    is_jd_complete: bool = False
+    is_cv_rubric_complete: bool = False
+    is_interview_complete: bool = False
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
 
 
+class PositionCreate(APIModel):
+    title: str
+    headcount: int
+    budget: str | None = None
+    jd_text: str | None = None
+
+
+class PositionUpdate(APIModel):
+    title: str | None = None
+    headcount: int | None = None
+    budget: str | None = None
+    jd_text: str | None = None
+    status: PositionStatus | None = None
+    is_jd_complete: bool | None = None
+    is_cv_rubric_complete: bool | None = None
+    is_interview_complete: bool | None = None
+
+
 class RubricCriterion(APIModel):
     id: UUID = Field(default_factory=uuid4)
-    campaign_id: UUID
+    position_id: UUID
     category: RubricCategory
     name: str
     weight: int = Field(ge=0, le=100)
@@ -169,7 +210,7 @@ class RubricCriterion(APIModel):
 
 class TestQuestion(APIModel):
     id: UUID = Field(default_factory=uuid4)
-    campaign_id: UUID
+    position_id: UUID
     question_text: str
     question_type: str = "multiple_choice"
     difficulty: str | None = None
@@ -185,7 +226,7 @@ class TestQuestion(APIModel):
 
 class Candidate(APIModel):
     id: UUID = Field(default_factory=uuid4)
-    campaign_id: UUID
+    position_id: UUID
     full_name: str
     email: str
     phone: str | None = None
@@ -208,7 +249,7 @@ class Candidate(APIModel):
 class CandidateScore(APIModel):
     id: UUID = Field(default_factory=uuid4)
     candidate_id: UUID
-    campaign_id: UUID
+    position_id: UUID
     score: float = Field(ge=0, le=100)
     badge: CandidateBadge
     ai_reasoning: str
@@ -365,6 +406,8 @@ class MockLoginRequest(APIModel):
 class CampaignCreate(APIModel):
     title: str
     jd_text: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     deadline_at: datetime | None = None
     created_by: UUID | None = None
 
@@ -373,6 +416,8 @@ class CampaignUpdate(APIModel):
     title: str | None = None
     jd_text: str | None = None
     status: CampaignStatus | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     deadline_at: datetime | None = None
 
 
@@ -405,6 +450,27 @@ class GenerateTestQuestionsRequest(APIModel):
 
 class TestQuestionUpsertRequest(APIModel):
     questions: list[TestQuestionInput]
+
+
+class InterviewRubricCriterion(APIModel):
+    id: str
+    index: int
+    criterion: str
+    description: str
+    weight: int
+    tone: str
+    editing: bool = False
+
+
+class InterviewRubricGroup(APIModel):
+    id: str
+    name: str
+    expanded: bool
+    criteria: list[InterviewRubricCriterion]
+
+
+class InterviewRubricUpsertRequest(APIModel):
+    groups: list[InterviewRubricGroup]
 
 
 class CandidateApplyRequest(APIModel):

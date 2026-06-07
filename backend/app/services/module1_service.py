@@ -37,6 +37,9 @@ from app.schemas.module1 import (
     InterviewSessionStatus,
     InvitationStatus,
     MockLoginRequest,
+    Position,
+    PositionCreate,
+    PositionStatus,
     RubricCriterion,
     RubricUpsertRequest,
     TestAttempt,
@@ -81,11 +84,21 @@ class Module1Service:
             raise AppError(404, "Candidate not found.")
         return candidate
 
-    def _rubric_or_error(self, campaign_id: UUID) -> list[RubricCriterion]:
-        rubric = self.repo.list_rubric(campaign_id)
+    def _rubric_or_error(self, position_id: UUID) -> list[RubricCriterion]:
+        rubric = self.repo.list_rubric(position_id)
         if not rubric:
-            raise AppError(400, "Campaign rubric is required for this action.")
+            raise AppError(400, "Position rubric is required for this action.")
         return rubric
+
+    def _position_or_404(self, position_id: UUID) -> Position:
+        # Assuming get_position exists or we can list and filter. Wait, is get_position implemented?
+        # Let's check. Actually, I didn't see get_position in supabase_repository.
+        # So I might need to implement get_position in repo, or just fetch all and filter.
+        # For now, I'll assume we'll implement get_position in the repo next.
+        position = self.repo.get_position(position_id)
+        if not position:
+            raise AppError(404, "Position not found.")
+        return position
 
     def _valid_test_invitation(self, token: str) -> TestInvitation:
         invitation = self.repo.get_test_invitation_by_hash(hash_token(token))
@@ -117,10 +130,11 @@ class Module1Service:
         updated = self.repo.update_candidate(candidate.id, {"status": to_status})
         if not updated:
             raise AppError(404, "Candidate not found.")
+        position = self._position_or_404(candidate.position_id)
         self.repo.create_stage_event(
             CandidateStageEvent(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                campaign_id=position.campaign_id,
                 from_status=from_status,
                 to_status=to_status,
                 reason=reason,
@@ -166,64 +180,80 @@ class Module1Service:
         self.repo.create_audit_log("CAMPAIGN_UPDATED", "campaign", campaign_id)
         return campaign
 
-    def analyze_jd(self, campaign_id: UUID) -> list[RubricCriterion]:
-        campaign = self._campaign_or_404(campaign_id)
-        if not campaign.jd_text or len(campaign.jd_text.strip()) < 100:
+    def create_position(self, campaign_id: UUID, payload: PositionCreate) -> Position:
+        self._campaign_or_404(campaign_id)
+        position = self.repo.create_position(Position(campaign_id=campaign_id, **payload.model_dump()))
+        self.repo.create_audit_log("POSITION_CREATED", "campaign", campaign_id, {"position_id": str(position.id)})
+        return position
+
+    def list_positions(self, campaign_id: UUID) -> list[Position]:
+        self._campaign_or_404(campaign_id)
+        return self.repo.list_positions(campaign_id)
+
+    def analyze_jd(self, position_id: UUID) -> list[RubricCriterion]:
+        position = self._position_or_404(position_id)
+        if not position.jd_text or len(position.jd_text.strip()) < 100:
             raise AppError(400, "JD must be at least 100 characters before AI analysis.")
-        criteria = self.ai.analyze_jd(campaign.id, campaign.jd_text)
-        saved = self.repo.replace_rubric(campaign.id, criteria)
-        self.repo.create_audit_log("JD_ANALYZED", "campaign", campaign.id, {"criteria_count": len(saved)})
+        criteria = self.ai.analyze_jd(position.id, position.jd_text)
+        saved = self.repo.replace_rubric(position.id, criteria)
+        self.repo.create_audit_log("JD_ANALYZED", "position", position.id, {"criteria_count": len(saved)})
         return saved
 
-    def upsert_rubric(self, campaign_id: UUID, payload: RubricUpsertRequest) -> list[RubricCriterion]:
-        self._campaign_or_404(campaign_id)
+    def upsert_rubric(self, position_id: UUID, payload: RubricUpsertRequest) -> list[RubricCriterion]:
+        self._position_or_404(position_id)
         total = sum(item.weight for item in payload.criteria)
         if total != 100:
             raise AppError(400, "Rubric total weight must equal 100.")
-        criteria = [RubricCriterion(campaign_id=campaign_id, **item.model_dump()) for item in payload.criteria]
-        saved = self.repo.replace_rubric(campaign_id, criteria)
-        self.repo.create_audit_log("RUBRIC_SAVED", "campaign", campaign_id, {"total_weight": total})
+        criteria = [RubricCriterion(position_id=position_id, **item.model_dump()) for item in payload.criteria]
+        saved = self.repo.replace_rubric(position_id, criteria)
+        self.repo.create_audit_log("RUBRIC_SAVED", "position", position_id, {"total_weight": total})
         return saved
 
     def publish_campaign(self, campaign_id: UUID) -> Campaign:
         campaign = self._campaign_or_404(campaign_id)
-        if not self.repo.list_rubric(campaign_id):
-            raise AppError(400, "Rubric must exist before publishing campaign.")
         public_token = campaign.public_token or generate_raw_token()
         updated = self.repo.update_campaign(campaign_id, {"status": CampaignStatus.ACTIVE, "public_token": public_token})
         self.repo.create_audit_log("CAMPAIGN_PUBLISHED", "campaign", campaign_id)
         return updated
 
-    def generate_test_questions(self, campaign_id: UUID, payload: GenerateTestQuestionsRequest) -> list[TestQuestion]:
-        campaign = self._campaign_or_404(campaign_id)
-        rubric = self._rubric_or_error(campaign_id)
-        questions = self.ai.generate_test_questions(campaign_id, campaign.jd_text or "", rubric, payload.count)
-        saved = self.repo.replace_test_questions(campaign_id, questions)
-        self.repo.create_audit_log("TEST_QUESTIONS_GENERATED", "campaign", campaign_id, {"count": len(saved)})
+    def generate_test_questions(self, position_id: UUID, payload: GenerateTestQuestionsRequest) -> list[TestQuestion]:
+        position = self._position_or_404(position_id)
+        rubric = self._rubric_or_error(position_id)
+        questions = self.ai.generate_test_questions(position_id, position.jd_text or "", rubric, payload.count)
+        saved = self.repo.replace_test_questions(position_id, questions)
+        self.repo.create_audit_log("TEST_QUESTIONS_GENERATED", "position", position_id, {"count": len(saved)})
         return saved
 
-    def list_test_questions(self, campaign_id: UUID) -> list[TestQuestion]:
-        self._campaign_or_404(campaign_id)
-        return self.repo.list_test_questions(campaign_id)
+    def list_test_questions(self, position_id: UUID) -> list[TestQuestion]:
+        self._position_or_404(position_id)
+        return self.repo.list_test_questions(position_id)
 
-    def upsert_test_questions(self, campaign_id: UUID, payload: TestQuestionUpsertRequest) -> list[TestQuestion]:
-        self._campaign_or_404(campaign_id)
-        questions = [TestQuestion(campaign_id=campaign_id, **item.model_dump()) for item in payload.questions]
+    def upsert_test_questions(self, position_id: UUID, payload: TestQuestionUpsertRequest) -> list[TestQuestion]:
+        self._position_or_404(position_id)
+        questions = [TestQuestion(position_id=position_id, **item.model_dump()) for item in payload.questions]
         if not 10 <= len(questions) <= 20:
             raise AppError(400, "Professional test must contain 10-20 questions.")
-        saved = self.repo.replace_test_questions(campaign_id, questions)
-        self.repo.create_audit_log("TEST_QUESTIONS_SAVED", "campaign", campaign_id, {"count": len(saved)})
+        saved = self.repo.replace_test_questions(position_id, questions)
+        self.repo.create_audit_log("TEST_QUESTIONS_SAVED", "position", position_id, {"count": len(saved)})
         return saved
 
-    def publish_test_questions(self, campaign_id: UUID) -> list[TestQuestion]:
-        questions = self.repo.list_test_questions(campaign_id)
+    def publish_position(self, position_id: UUID) -> Position:
+        position = self._position_or_404(position_id)
+        rubric = self.repo.list_rubric(position_id)
+        if not rubric:
+            raise AppError(400, "Rubric must exist before publishing position.")
+        questions = self.repo.list_test_questions(position_id)
         if not questions:
             raise AppError(400, "Test questions must exist before publishing.")
         if not 10 <= len(questions) <= 20:
             raise AppError(400, "Professional test must contain 10-20 questions.")
-        published = self.repo.publish_test_questions(campaign_id)
-        self.repo.create_audit_log("TEST_QUESTIONS_PUBLISHED", "campaign", campaign_id, {"count": len(published)})
-        return published
+        
+        # Publish questions
+        self.repo.publish_test_questions(position_id)
+        # Update position status
+        updated = self.repo.update_position(position_id, {"status": "PUBLISHED"})
+        self.repo.create_audit_log("POSITION_PUBLISHED", "position", position_id)
+        return updated
 
     def get_public_job(self, campaign_id: UUID) -> Campaign:
         campaign = self._campaign_or_404(campaign_id)
@@ -231,15 +261,22 @@ class Module1Service:
             raise AppError(404, "Public job is not active.")
         return campaign
 
-    def apply_candidate(self, campaign_id: UUID, payload: CandidateApplyRequest) -> Candidate:
-        campaign = self.get_public_job(campaign_id)
-        if self.repo.get_candidate_by_email(campaign.id, payload.email):
-            raise AppError(409, "Candidate email already applied to this campaign.")
-        candidate = self.repo.create_candidate(Candidate(campaign_id=campaign.id, **payload.model_dump()))
-        self.repo.create_audit_log("CANDIDATE_APPLIED", "candidate", candidate.id, {"campaign_id": str(campaign.id)})
+    def apply_candidate(self, position_id: UUID, payload: CandidateApplyRequest) -> Candidate:
+        position = self._position_or_404(position_id)
+        if position.status != PositionStatus.PUBLISHED:
+            raise AppError(400, "Position is not published.")
+        
+        campaign = self._campaign_or_404(position.campaign_id)
+        if campaign.status != CampaignStatus.ACTIVE:
+            raise AppError(400, "Campaign is not active.")
+
+        if self.repo.get_candidate_by_email(position.id, payload.email):
+            raise AppError(409, "Candidate email already applied to this position.")
+        candidate = self.repo.create_candidate(Candidate(position_id=position.id, **payload.model_dump()))
+        self.repo.create_audit_log("CANDIDATE_APPLIED", "candidate", candidate.id, {"position_id": str(position.id)})
         return candidate
 
-    def apply_candidate_file(self, campaign_id: UUID, file_bytes: bytes, file_name: str) -> Candidate:
+    def apply_candidate_file(self, position_id: UUID, file_bytes: bytes, file_name: str) -> Candidate:
         from app.core.document_parser import extract_text_from_pdf, extract_text_from_docx
         
         # Extract text based on extension
@@ -277,60 +314,61 @@ class Module1Service:
             cv_text=cv_text,
             cv_file_name=file_name,
         )
-        return self.apply_candidate(campaign_id, payload)
+        return self.apply_candidate(position_id, payload)
 
-    def list_candidates(self, campaign_id: UUID) -> list[Candidate]:
-        self._campaign_or_404(campaign_id)
-        return self.repo.list_candidates(campaign_id)
+    def list_candidates(self, position_id: UUID) -> list[Candidate]:
+        self._position_or_404(position_id)
+        return self.repo.list_candidates(position_id)
 
     def get_candidate(self, candidate_id: UUID) -> Candidate:
         return self._candidate_or_404(candidate_id)
 
-    def leaderboard(self, campaign_id: UUID) -> list[dict[str, Any]]:
-        self._campaign_or_404(campaign_id)
-        candidates = self.repo.list_candidates(campaign_id)
+    def leaderboard(self, position_id: UUID) -> list[dict[str, Any]]:
+        position = self._position_or_404(position_id)
+        candidates = self.repo.list_candidates(position_id)
         rows = []
         for candidate in candidates:
             score = self.repo.get_candidate_score(candidate.id)
             rows.append({"candidate": candidate, "score": score})
         return sorted(rows, key=lambda row: row["score"].score if row["score"] else -1, reverse=True)
 
-    def score_candidate(self, campaign_id: UUID, candidate_id: UUID) -> CandidateScore:
-        self._campaign_or_404(campaign_id)
-        rubric = self._rubric_or_error(campaign_id)
+    def score_candidate(self, position_id: UUID, candidate_id: UUID) -> CandidateScore:
+        position = self._position_or_404(position_id)
+        rubric = self._rubric_or_error(position_id)
         candidate = self._candidate_or_404(candidate_id)
-        if candidate.campaign_id != campaign_id:
-            raise AppError(400, "Candidate does not belong to this campaign.")
+        if candidate.position_id != position_id:
+            raise AppError(400, "Candidate does not belong to this position.")
         score = self.ai.score_candidate(candidate, rubric)
         saved = self.repo.save_candidate_score(score)
         self._transition_candidate(candidate, CandidateStatus.CV_SCORED, "CV scored by AI")
         self.repo.create_audit_log("CANDIDATE_SCORED", "candidate", candidate.id, {"score": saved.score})
         return saved
 
-    def bulk_score_candidates(self, campaign_id: UUID, candidate_ids: list[UUID] | None = None) -> list[CandidateScore]:
-        candidates = self.repo.list_candidates(campaign_id)
+    def bulk_score_candidates(self, position_id: UUID, candidate_ids: list[UUID] | None = None) -> list[CandidateScore]:
+        position = self._position_or_404(position_id)
+        candidates = self.repo.list_candidates(position_id)
         if candidate_ids:
             wanted = set(candidate_ids)
             candidates = [item for item in candidates if item.id in wanted]
-        return [self.score_candidate(campaign_id, item.id) for item in candidates]
+        return [self.score_candidate(position_id, item.id) for item in candidates]
 
     def update_candidate_status(self, candidate_id: UUID, payload: CandidateStatusUpdateRequest) -> Candidate:
         candidate = self._candidate_or_404(candidate_id)
         return self._transition_candidate(candidate, payload.status, payload.reason, payload.actor_id)
 
-    def compare_candidates(self, campaign_id: UUID, payload: CandidateCompareRequest) -> list[FinalReviewResponse]:
+    def compare_candidates(self, position_id: UUID, payload: CandidateCompareRequest) -> list[FinalReviewResponse]:
         return [self.final_review(candidate_id) for candidate_id in payload.candidate_ids]
 
     def invite_test(self, candidate_id: UUID) -> TokenLinkResponse:
         candidate = self._candidate_or_404(candidate_id)
-        questions = self.repo.list_test_questions(candidate.campaign_id, published_only=True)
+        questions = self.repo.list_test_questions(candidate.position_id, published_only=True)
         if not questions:
             raise AppError(400, "Published test questions are required before test invitation.")
         raw_token = generate_raw_token()
         invitation = self.repo.create_test_invitation(
             TestInvitation(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                campaign_id=candidate.position_id,
                 token_hash=hash_token(raw_token),
                 expires_at=now_utc() + timedelta(hours=settings.CANDIDATE_LINK_TTL_HOURS),
             )
@@ -338,7 +376,7 @@ class Module1Service:
         event = self.email.send(
             EmailEvent(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                campaign_id=candidate.position_id,
                 email_type=EmailType.TEST_INVITATION,
                 recipient_email=candidate.email,
                 subject="Your HireTrain AI professional test invitation",
@@ -347,14 +385,15 @@ class Module1Service:
         )
         saved_event = self.repo.create_email_event(event)
         self._transition_candidate(candidate, CandidateStatus.TEST_INVITED, "Test invitation sent", metadata={"invitation_id": str(invitation.id)})
-        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.campaign_id, token=raw_token, url=f"/api/candidate/test/{raw_token}", expires_at=invitation.expires_at, email_event=saved_event)
+        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.position_id, token=raw_token, url=f"/api/candidate/test/{raw_token}", expires_at=invitation.expires_at, email_event=saved_event)
 
     def open_test(self, token: str) -> TestOpenResponse:
         invitation = self._valid_test_invitation(token)
         self.repo.update_test_invitation(invitation.id, {"status": InvitationStatus.OPENED})
         candidate = self._candidate_or_404(invitation.candidate_id)
-        campaign = self._campaign_or_404(invitation.campaign_id)
-        questions = self.repo.list_test_questions(campaign.id, published_only=True)
+        position = self._position_or_404(invitation.campaign_id)
+        campaign = self._campaign_or_404(position.campaign_id)
+        questions = self.repo.list_test_questions(position.id, published_only=True)
         return TestOpenResponse(candidate=candidate, campaign=campaign, invitation=invitation, questions=questions)
 
     def start_test(self, token: str) -> TestStartResponse:
@@ -408,7 +447,7 @@ class Module1Service:
         invitation = self.repo.create_interview_invitation(
             InterviewInvitation(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                campaign_id=candidate.position_id,
                 token_hash=hash_token(raw_token),
                 expires_at=now_utc() + timedelta(hours=settings.CANDIDATE_LINK_TTL_HOURS),
             )
@@ -416,7 +455,7 @@ class Module1Service:
         event = self.email.send(
             EmailEvent(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                campaign_id=candidate.position_id,
                 email_type=EmailType.INTERVIEW_INVITATION,
                 recipient_email=candidate.email,
                 subject="Your HireTrain AI virtual interview invitation",
@@ -425,13 +464,13 @@ class Module1Service:
         )
         saved_event = self.repo.create_email_event(event)
         self._transition_candidate(candidate, CandidateStatus.INTERVIEW_INVITED, "Interview invitation sent", metadata={"invitation_id": str(invitation.id)})
-        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.campaign_id, token=raw_token, url=f"/api/candidate/interview/{raw_token}", expires_at=invitation.expires_at, email_event=saved_event)
-
+        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.position_id, token=raw_token, url=f"/api/candidate/interview/{raw_token}", expires_at=invitation.expires_at, email_event=saved_event)
     def open_interview(self, token: str) -> InterviewOpenResponse:
         invitation = self._valid_interview_invitation(token)
         self.repo.update_interview_invitation(invitation.id, {"status": InvitationStatus.OPENED})
         candidate = self._candidate_or_404(invitation.candidate_id)
-        campaign = self._campaign_or_404(invitation.campaign_id)
+        position = self._position_or_404(invitation.campaign_id)
+        campaign = self._campaign_or_404(position.campaign_id)
         session = self.repo.get_interview_session_by_invitation(invitation.id)
         return InterviewOpenResponse(candidate=candidate, campaign=campaign, invitation=invitation, session=session)
 
@@ -521,28 +560,28 @@ class Module1Service:
         self.repo.create_audit_log("FINAL_DECISION_SET", "candidate", candidate.id, {"decision": payload.decision}, actor_id=payload.actor_id)
         return updated
 
-    def bulk_email(self, campaign_id: UUID, payload: BulkEmailRequest) -> dict[str, Any]:
-        self._campaign_or_404(campaign_id)
-        key = f"{campaign_id}:{payload.actor_email or 'anonymous'}"
+    def bulk_email(self, position_id: UUID, payload: BulkEmailRequest) -> dict[str, Any]:
+        self._position_or_404(position_id)
+        key = f"{position_id}:{payload.actor_email or 'anonymous'}"
         if not validate_secure_password(payload.secure_password, settings.SECURE_ACTION_PASSWORD):
             failures = self.repo.secure_failures.get(key, 0) + 1
             self.repo.secure_failures[key] = failures
             if failures >= 3:
-                self.repo.create_audit_log("SECURE_CONFIRMATION_FAILED_3_TIMES", "campaign", campaign_id, {"failures": failures}, actor_email=payload.actor_email)
+                self.repo.create_audit_log("SECURE_CONFIRMATION_FAILED_3_TIMES", "position", position_id, {"failures": failures}, actor_email=payload.actor_email)
             raise AppError(403, "Secure confirmation failed.")
 
         events = []
         for candidate_id in payload.candidate_ids:
             candidate = self._candidate_or_404(candidate_id)
-            if candidate.campaign_id != campaign_id:
-                raise AppError(400, "All selected candidates must belong to the campaign.")
+            if candidate.position_id != position_id:
+                raise AppError(400, "All selected candidates must belong to the position.")
             decision = candidate.final_decision or ("PASSED" if candidate.status == CandidateStatus.PASSED else "REJECTED")
             email_type = EmailType.PASS_RESULT if decision == "PASSED" else EmailType.REJECT_RESULT
             body = self.ai.generate_candidate_feedback(candidate, decision, {"candidate": candidate.model_dump()})
             event = self.email.send(
                 EmailEvent(
                     candidate_id=candidate.id,
-                    campaign_id=campaign_id,
+                    campaign_id=position_id,
                     email_type=email_type,
                     recipient_email=candidate.email,
                     subject="Your HireTrain AI recruitment result",
@@ -553,7 +592,7 @@ class Module1Service:
             self._transition_candidate(candidate, CandidateStatus.CONTACTED, "Final result email confirmed and generated")
 
         self.repo.secure_failures[key] = 0
-        self.repo.create_audit_log("BULK_EMAIL_CONFIRMED", "campaign", campaign_id, {"candidate_count": len(events)}, actor_email=payload.actor_email)
+        self.repo.create_audit_log("BULK_EMAIL_CONFIRMED", "position", position_id, {"candidate_count": len(events)}, actor_email=payload.actor_email)
         return {"email_events": events, "updated_candidate_count": len(events)}
 
     def list_email_events(self, campaign_id: UUID | None = None):

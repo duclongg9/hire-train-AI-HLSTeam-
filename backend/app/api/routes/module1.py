@@ -2,18 +2,20 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import logging
 import io
 import zipfile
 import pdfplumber
 import asyncio
 import websockets
 import json
-from fastapi import APIRouter, Body, Depends, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, Depends, UploadFile, File, Form, BackgroundTasks, WebSocket, WebSocketDisconnect
 
 from app.schemas.module1 import (
     BulkCandidateScoreRequest,
     BulkEmailRequest,
     CampaignCreate,
+    CampaignStatus,
     CampaignUpdate,
     CandidateApplyRequest,
     CandidateCompareRequest,
@@ -23,7 +25,10 @@ from app.schemas.module1 import (
     GenerateTestQuestionsRequest,
     InterviewCheckInRequest,
     InterviewEventCreate,
+    InterviewRubricUpsertRequest,
     MockLoginRequest,
+    PositionCreate,
+    PositionStatus,
     RubricUpsertRequest,
     TestQuestionUpsertRequest,
     TestSubmitRequest,
@@ -33,6 +38,7 @@ from app.services.module1_service import Module1Service, get_module1_service
 from app.core.errors import AppError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def service_dep() -> Module1Service:
@@ -165,14 +171,27 @@ def update_campaign(campaign_id: UUID, payload: CampaignUpdate, service: Module1
     return service.update_campaign(campaign_id, payload)
 
 
-@router.post("/campaigns/{campaign_id}/analyze-jd")
-def analyze_jd(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
-    return service.analyze_jd(campaign_id)
+@router.post("/campaigns/{campaign_id}/close")
+def close_campaign(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.update_campaign(campaign_id, CampaignUpdate(status=CampaignStatus.CLOSED))
 
 
-@router.post("/campaigns/ai-core/jd/extract-rubric")
-def extract_rubric(
-    campaign_id: UUID = Body(...),
+@router.get("/campaigns/{campaign_id}/positions")
+def list_positions(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.list_positions(campaign_id)
+
+
+@router.post("/campaigns/{campaign_id}/positions", status_code=201)
+def create_position(campaign_id: UUID, payload: PositionCreate, service: Module1Service = Depends(service_dep)):
+    return service.create_position(campaign_id, payload)
+
+
+@router.post("/campaigns/{campaign_id}/positions/upload", status_code=201)
+def create_position_upload(
+    campaign_id: UUID,
+    title: str = Form(...),
+    headcount: int = Form(...),
+    budget: str | None = Form(default=None),
     file: UploadFile = File(...),
     service: Module1Service = Depends(service_dep),
 ):
@@ -191,65 +210,158 @@ def extract_rubric(
         if not text.strip():
             raise AppError(400, "Could not extract text from the JD file.")
         
-        # Update JD text in campaign
-        service.update_campaign(campaign_id, CampaignUpdate(jd_text=text))
-        
-        # Analyze JD and return Rubric
-        return service.analyze_jd(campaign_id)
+        payload = PositionCreate(
+            title=title,
+            headcount=headcount,
+            budget=budget,
+            jd_text=text
+        )
+        return service.create_position(campaign_id, payload)
     except AppError as e:
         raise e
     except Exception as e:
         raise AppError(500, f"Error processing JD file: {str(e)}")
 
 
-@router.get("/campaigns/{campaign_id}/rubric")
-def get_rubric(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
-    return service.repo.list_rubric(campaign_id)
+@router.post("/positions/{position_id}/analyze-jd")
+def analyze_jd(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.analyze_jd(position_id)
 
 
-@router.put("/campaigns/{campaign_id}/rubric")
-def upsert_rubric(campaign_id: UUID, payload: RubricUpsertRequest, service: Module1Service = Depends(service_dep)):
-    return service.upsert_rubric(campaign_id, payload)
+@router.post("/positions/ai-core/jd/extract-rubric")
+def extract_rubric(
+    position_id: UUID = Body(...),
+    file: UploadFile = File(...),
+    service: Module1Service = Depends(service_dep),
+):
+    from app.core.document_parser import extract_text_from_pdf, extract_text_from_docx
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in ("pdf", "docx", "doc"):
+        raise AppError(400, "Only PDF and DOCX files are supported.")
+        
+    try:
+        content = file.file.read()
+        if ext == "pdf":
+            text = extract_text_from_pdf(content)
+        else:
+            text = extract_text_from_docx(content)
+            
+        if not text.strip():
+            raise AppError(400, "Could not extract text from the JD file.")
+        
+        # Update JD text in position
+        service.repo.update_position(position_id, {"jd_text": text})
+        
+        # Analyze JD and return Rubric
+        return service.analyze_jd(position_id)
+    except AppError as e:
+        raise e
+    except Exception as e:
+        raise AppError(500, f"Error processing JD file: {str(e)}")
+
+
+@router.get("/positions/{position_id}/rubric")
+def get_rubric(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.repo.list_rubric(position_id)
+
+
+@router.put("/positions/{position_id}/rubric")
+def upsert_rubric(position_id: UUID, payload: RubricUpsertRequest, service: Module1Service = Depends(service_dep)):
+    return service.upsert_rubric(position_id, payload)
 
 
 @router.post("/campaigns/{campaign_id}/publish")
 def publish_campaign(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
+    # Hard-Gate Validation: A campaign can only be ACTIVE if all its positions are fully configured
+    positions = service.repo.list_positions(campaign_id)
+    if not positions:
+        raise AppError(400, "Cannot publish campaign: No positions found.")
+        
+    for pos in positions:
+        # Check CV Rubric
+        cv_rubric = service.repo.list_rubric(pos.id)
+        if not cv_rubric:
+            raise AppError(400, f"Cannot publish campaign: Position '{pos.title}' is missing CV Rubric.")
+            
+        # Check Test Questions
+        test_questions = service.repo.list_test_questions(pos.id)
+        if not test_questions:
+            raise AppError(400, f"Cannot publish campaign: Position '{pos.title}' is missing Test Questions.")
+            
+        # Check Interview Rubric
+        interview_rubric = service.repo.list_interview_rubrics(pos.id)
+        if not interview_rubric:
+            raise AppError(400, f"Cannot publish campaign: Position '{pos.title}' is missing Interview Rubric.")
+            
     return service.publish_campaign(campaign_id)
 
 
-@router.post("/campaigns/{campaign_id}/test-questions/generate")
-def generate_test_questions(campaign_id: UUID, payload: GenerateTestQuestionsRequest, service: Module1Service = Depends(service_dep)):
-    return service.generate_test_questions(campaign_id, payload)
+@router.post("/positions/{position_id}/test-questions/generate")
+def generate_test_questions(position_id: UUID, payload: GenerateTestQuestionsRequest, service: Module1Service = Depends(service_dep)):
+    return service.generate_test_questions(position_id, payload)
 
 
-@router.get("/campaigns/{campaign_id}/test-questions")
-def list_test_questions(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
-    return service.list_test_questions(campaign_id)
+@router.get("/positions/{position_id}/test-questions")
+def list_test_questions(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.list_test_questions(position_id)
 
 
-@router.put("/campaigns/{campaign_id}/test-questions")
-def upsert_test_questions(campaign_id: UUID, payload: TestQuestionUpsertRequest, service: Module1Service = Depends(service_dep)):
-    return service.upsert_test_questions(campaign_id, payload)
+@router.put("/positions/{position_id}/test-questions")
+def upsert_test_questions(position_id: UUID, payload: TestQuestionUpsertRequest, service: Module1Service = Depends(service_dep)):
+    return service.upsert_test_questions(position_id, payload)
 
 
-@router.post("/campaigns/{campaign_id}/test-questions/publish")
-def publish_test_questions(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
-    return service.publish_test_questions(campaign_id)
+@router.get("/positions/{position_id}/interview-rubric")
+def get_interview_rubric(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.repo.list_interview_rubrics(position_id)
 
 
-@router.get("/public/jobs/{campaign_id}")
-def get_public_job(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
-    return service.get_public_job(campaign_id)
+@router.put("/positions/{position_id}/interview-rubric")
+def upsert_interview_rubric(position_id: UUID, payload: InterviewRubricUpsertRequest, service: Module1Service = Depends(service_dep)):
+    return service.repo.replace_interview_rubrics(position_id, payload.groups)
 
 
-@router.post("/public/jobs/{campaign_id}/apply", status_code=201)
-def apply_candidate(campaign_id: UUID, payload: CandidateApplyRequest, service: Module1Service = Depends(service_dep)):
-    return service.apply_candidate(campaign_id, payload)
+@router.post("/positions/{position_id}/publish")
+def publish_position(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    # Hard-Gate Validation: Check CV Rubric, Test Questions, and Interview Rubric
+    cv_rubric = service.repo.list_rubric(position_id)
+    if not cv_rubric:
+        raise AppError(400, "Cannot publish position: CV Rubric is missing.")
+    
+    test_questions = service.repo.list_test_questions(position_id)
+    if not test_questions:
+        raise AppError(400, "Cannot publish position: Test Questions are missing.")
+        
+    interview_rubric = service.repo.list_interview_rubrics(position_id)
+    if not interview_rubric:
+        raise AppError(400, "Cannot publish position: Interview Rubric is missing.")
+        
+    return service.publish_position(position_id)
 
 
-@router.post("/public/jobs/{campaign_id}/apply-file", status_code=201)
+@router.post("/positions/{position_id}/close")
+def close_position(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.repo.update_position(position_id, {"status": "CLOSED"})
+
+
+@router.get("/public/positions")
+def list_public_positions(service: Module1Service = Depends(service_dep)):
+    return service.list_public_positions()
+
+
+@router.get("/public/jobs/{position_id}")
+def get_public_job(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.get_public_job(position_id)
+
+
+@router.post("/public/jobs/{position_id}/apply", status_code=201)
+def apply_candidate(position_id: UUID, payload: CandidateApplyRequest, service: Module1Service = Depends(service_dep)):
+    return service.apply_candidate(position_id, payload)
+
+
+@router.post("/public/jobs/{position_id}/apply-file", status_code=201)
 def apply_candidate_file(
-    campaign_id: UUID,
+    position_id: UUID,
     file: UploadFile = File(...),
     service: Module1Service = Depends(service_dep),
 ):
@@ -259,16 +371,16 @@ def apply_candidate_file(
         
     try:
         content = file.file.read()
-        return service.apply_candidate_file(campaign_id, content, file.filename)
+        return service.apply_candidate_file(position_id, content, file.filename)
     except AppError as e:
         raise e
     except Exception as e:
         raise AppError(500, f"Error processing CV file: {str(e)}")
 
 
-@router.get("/campaigns/{campaign_id}/candidates")
-def list_candidates(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
-    return service.list_candidates(campaign_id)
+@router.get("/positions/{position_id}/candidates")
+def list_candidates(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.list_candidates(position_id)
 
 
 @router.get("/candidates/{candidate_id}")
@@ -276,21 +388,21 @@ def get_candidate(candidate_id: UUID, service: Module1Service = Depends(service_
     return service.get_candidate(candidate_id)
 
 
-@router.get("/campaigns/{campaign_id}/leaderboard")
-def leaderboard(campaign_id: UUID, service: Module1Service = Depends(service_dep)):
-    return service.leaderboard(campaign_id)
+@router.get("/positions/{position_id}/leaderboard")
+def leaderboard(position_id: UUID, service: Module1Service = Depends(service_dep)):
+    return service.leaderboard(position_id)
 
 
-@router.post("/campaigns/{campaign_id}/candidates/score")
-def score_candidate(campaign_id: UUID, payload: CandidateScoreRequest | None = Body(default=None), service: Module1Service = Depends(service_dep)):
+@router.post("/positions/{position_id}/candidates/score")
+def score_candidate(position_id: UUID, payload: CandidateScoreRequest | None = Body(default=None), service: Module1Service = Depends(service_dep)):
     if payload and payload.candidate_id:
-        return service.score_candidate(campaign_id, payload.candidate_id)
-    return service.bulk_score_candidates(campaign_id)
+        return service.score_candidate(position_id, payload.candidate_id)
+    return service.bulk_score_candidates(position_id)
 
 
-@router.post("/campaigns/{campaign_id}/candidates/bulk-score")
-def bulk_score_candidates(campaign_id: UUID, payload: BulkCandidateScoreRequest | None = Body(default=None), service: Module1Service = Depends(service_dep)):
-    return service.bulk_score_candidates(campaign_id, payload.candidate_ids if payload else None)
+@router.post("/positions/{position_id}/candidates/bulk-score")
+def bulk_score_candidates(position_id: UUID, payload: BulkCandidateScoreRequest | None = Body(default=None), service: Module1Service = Depends(service_dep)):
+    return service.bulk_score_candidates(position_id, payload.candidate_ids if payload else None)
 
 
 @router.patch("/candidates/{candidate_id}/status")
@@ -298,9 +410,9 @@ def update_candidate_status(candidate_id: UUID, payload: CandidateStatusUpdateRe
     return service.update_candidate_status(candidate_id, payload)
 
 
-@router.post("/campaigns/{campaign_id}/candidates/compare")
-def compare_candidates(campaign_id: UUID, payload: CandidateCompareRequest, service: Module1Service = Depends(service_dep)):
-    return service.compare_candidates(campaign_id, payload)
+@router.post("/positions/{position_id}/candidates/compare")
+def compare_candidates(position_id: UUID, payload: CandidateCompareRequest, service: Module1Service = Depends(service_dep)):
+    return service.compare_candidates(position_id, payload)
 
 
 @router.post("/candidates/{candidate_id}/invite-test")
@@ -379,14 +491,14 @@ def final_decision(candidate_id: UUID, payload: FinalDecisionRequest, service: M
     return service.final_decision(candidate_id, payload)
 
 
-@router.post("/campaigns/{campaign_id}/bulk-email")
-def bulk_email(campaign_id: UUID, payload: BulkEmailRequest, service: Module1Service = Depends(service_dep)):
-    return service.bulk_email(campaign_id, payload)
+@router.post("/positions/{position_id}/bulk-email")
+def bulk_email(position_id: UUID, payload: BulkEmailRequest, service: Module1Service = Depends(service_dep)):
+    return service.bulk_email(position_id, payload)
 
 
 @router.get("/emails")
-def list_email_events(campaign_id: UUID | None = None, service: Module1Service = Depends(service_dep)):
-    return service.list_email_events(campaign_id)
+def list_email_events(position_id: UUID | None = None, service: Module1Service = Depends(service_dep)):
+    return service.list_email_events(position_id)
 
 
 @router.websocket("/interview/live")
@@ -513,3 +625,77 @@ def get_transcribe_presigned_url(
         return {"url": url, "expires_in_seconds": 300}
     except Exception as e:
         raise AppError(500, f"Failed to generate presigned URL: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Text-to-Speech endpoint — mirrors EdgeTts.cs pattern
+# Voice: vi-VN-NamMinhNeural (configurable via request body)
+# Returns: audio/mpeg (MP3) stream synthesised by edge-tts
+# ---------------------------------------------------------------------------
+
+class TtsRequest(BaseModel):
+    text: str
+    voice: str = "vi-VN-NamMinhNeural"
+    rate: str = "+0%"
+    volume: str = "+0%"
+
+
+@router.post("/tts")
+async def text_to_speech(payload: TtsRequest):
+    """
+    Synthesise Vietnamese speech via Microsoft Edge TTS.
+    Mirrors the EdgeTts.cs SynthesizeAsync pattern:
+      - Collects all audio into a MemoryStream (io.BytesIO) BEFORE responding
+      - Returns the complete MP3 bytes as audio/mpeg
+      - Properly handles NoAudioReceived with retries (like the C# Stop/retry pattern)
+    """
+    import edge_tts
+    from fastapi.responses import Response
+    import io
+
+    text = (
+        payload.text
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace('"', "'")
+        .strip()
+    )
+
+    if not text:
+        raise AppError(400, "text must not be empty")
+
+    async def synthesize(voice: str, rate: str, volume: str) -> bytes | None:
+        """Mirrors EdgeTts.cs SynthesizeAsync — collect into BytesIO, return bytes or None."""
+        try:
+            communicate = edge_tts.Communicate(text=text, voice=voice, rate=rate, volume=volume)
+            buf = io.BytesIO()
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    buf.write(chunk["data"])
+            data = buf.getvalue()
+            return data if data else None
+        except (NoAudioReceived, Exception):
+            return None
+
+    # Attempt 1: requested voice + rate/volume
+    audio = await synthesize(payload.voice, payload.rate, payload.volume)
+
+    # Attempt 2: same voice, reset rate/volume to defaults (avoids format issues)
+    if audio is None:
+        audio = await synthesize(payload.voice, "+0%", "+0%")
+
+    # Attempt 3: fallback to a known-stable voice
+    if audio is None:
+        audio = await synthesize("vi-VN-HoaiMyNeural", "+0%", "+0%")
+
+    if not audio:
+        raise AppError(500, "Edge TTS returned no audio after retries. Check network or voice parameters.")
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Length": str(len(audio)),
+        },
+    )

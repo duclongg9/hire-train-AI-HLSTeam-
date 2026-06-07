@@ -1,6 +1,6 @@
 import logging
 import boto3
-from botocore.auth import SigV4Auth
+from botocore.auth import SigV4QueryAuth
 from botocore.awsrequest import AWSRequest
 from config import settings
 
@@ -14,16 +14,27 @@ class TranscribeService:
         self,
         language_code: str = "vi-VN",
         sample_rate: int = 16000,
-        media_encoding: str = "pcm"
+        media_encoding: str = "pcm",
+        expires: int = 300,
     ) -> str:
         """
         Generate a presigned WebSocket URL for AWS Transcribe Streaming using SigV4 authentication.
         """
         try:
-            # Initialize Session (inherits credentials from env/EC2 profile)
-            session = boto3.Session()
+            # Uses explicit .env credentials in development. Passing None lets
+            # boto3 fall back to the default credential chain in production.
+            session = boto3.Session(
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
+                aws_session_token=getattr(settings, "AWS_SESSION_TOKEN", None) or None,
+                region_name=self.region,
+            )
             credentials = session.get_credentials()
             if not credentials:
+                # If running locally in development or mock mode, return a dummy WebSocket URL
+                if settings.MOCK_MODE or settings.APP_ENV == "development":
+                    logger.warning("No AWS credentials found in development. Returning a mock presigned Transcribe URL.")
+                    return f"wss://transcribestreaming.{self.region}.amazonaws.com:8443/stream-transcription-websocket?mock=true&language-code={language_code}"
                 raise ValueError("No AWS Credentials found on the server.")
             
             frozen_credentials = credentials.get_frozen_credentials()
@@ -46,8 +57,9 @@ class TranscribeService:
                 headers={"host": host}
             )
             
-            # Sign request using SigV4
-            signer = SigV4Auth(frozen_credentials, "transcribe", self.region)
+            # Browser WebSocket clients cannot set AWS Authorization headers, so
+            # Transcribe Streaming must be signed into query parameters.
+            signer = SigV4QueryAuth(frozen_credentials, "transcribe", self.region, expires=expires)
             signer.add_auth(request)
             
             # Prepare the request to get the final URL with signature query parameters

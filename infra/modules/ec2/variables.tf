@@ -71,3 +71,9 @@ variable "tags" {
   description = "Map of tags to apply to all resources created by this module. Typically set to local.common_tags from the root module."
   type        = map(string)
 }
+
+variable "user_data" {
+  description = "User data script to run on instance start. Defaults to empty."
+  type        = string
+  default     = ""
+}
