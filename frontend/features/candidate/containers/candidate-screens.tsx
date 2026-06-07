@@ -577,6 +577,7 @@ export function WaitingRoomScreen() {
           </div>
         </Card>
       </main>
+      <VoiceConsentModal open={consentOpen} onOpenChange={setConsentOpen} onConsent={acceptConsent} />
     </div>
   )
 }
