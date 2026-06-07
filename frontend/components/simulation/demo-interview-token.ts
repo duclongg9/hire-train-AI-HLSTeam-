@@ -31,16 +31,25 @@ export async function createDemoInterviewToken() {
 
   const campaign = await requestJson<{ id: string }>("/campaigns", {
     body: JSON.stringify({
-      created_by: suffix,
-      description: "Local demo interview for AWS Transcribe testing.",
-      jd_text: "AWS Transcribe, customer support, communication.",
-      status: "DRAFT",
       title: "Demo AWS Transcribe Interview",
+      jd_text:
+        "Demo interview campaign for testing voice transcription. The candidate should communicate clearly, answer customer support scenarios, and explain practical problem solving steps.",
     }),
     method: "POST",
   })
 
-  await requestJson(`/campaigns/${campaign.id}/rubric`, {
+  const position = await requestJson<{ id: string }>(`/campaigns/${campaign.id}/positions`, {
+    body: JSON.stringify({
+      budget: "Demo",
+      headcount: 1,
+      jd_text:
+        "We are hiring a support specialist who can communicate clearly, handle customer concerns, and explain resolutions in a structured voice interview.",
+      title: "Demo Voice Interview Position",
+    }),
+    method: "POST",
+  })
+
+  await requestJson(`/positions/${position.id}/rubric`, {
     body: JSON.stringify({
       criteria: [
         {
@@ -54,9 +63,63 @@ export async function createDemoInterviewToken() {
     method: "PUT",
   })
 
+  await requestJson(`/positions/${position.id}/test-questions`, {
+    body: JSON.stringify({
+      questions: Array.from({ length: 10 }, (_, index) => ({
+        correct_option_id: "A",
+        difficulty: index % 3 === 0 ? "hard" : "medium",
+        explanation: "A structured and empathetic response is the strongest answer.",
+        options: [
+          { id: "A", text: "Acknowledge the issue, verify details, and define the next step." },
+          { id: "B", text: "Ask the customer to open a new request." },
+          { id: "C", text: "Close the case if the cause is unclear." },
+          { id: "D", text: "Promise a fix before checking the facts." },
+        ],
+        order_index: index + 1,
+        question_text: `Demo support scenario ${index + 1}: what is the best first response?`,
+        question_type: "multiple_choice",
+        skill_tag: "communication",
+        status: "APPROVED",
+      })),
+    }),
+    method: "PUT",
+  })
+
+  await requestJson(`/positions/${position.id}/interview-rubric`, {
+    body: JSON.stringify({
+      groups: [
+        {
+          criteria: [
+            {
+              criterion: "Clarity",
+              description: "Answers are easy to understand and structured.",
+              id: "clarity",
+              index: 1,
+              tone: "professional",
+              weight: 50,
+            },
+            {
+              criterion: "Customer empathy",
+              description: "Shows empathy while keeping the conversation productive.",
+              id: "empathy",
+              index: 2,
+              tone: "supportive",
+              weight: 50,
+            },
+          ],
+          expanded: true,
+          id: "demo-interview",
+          name: "Demo interview rubric",
+        },
+      ],
+    }),
+    method: "PUT",
+  })
+
+  await requestJson(`/positions/${position.id}/publish`, { method: "POST" })
   await requestJson(`/campaigns/${campaign.id}/publish`, { method: "POST" })
 
-  const candidate = await requestJson<{ id: string }>(`/public/jobs/${campaign.id}/apply`, {
+  const candidate = await requestJson<{ id: string }>(`/public/jobs/${position.id}/apply`, {
     body: JSON.stringify({
       cv_file_name: "demo.txt",
       cv_text: "Demo candidate for local AWS Transcribe testing.",

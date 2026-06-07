@@ -11,8 +11,9 @@ class S3Service:
         try:
             self.s3_client = boto3.client(
                 's3',
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
+                aws_session_token=settings.AWS_SESSION_TOKEN or None,
             )
             self.bucket_name = settings.AWS_S3_BUCKET_NAME
         except Exception as e:

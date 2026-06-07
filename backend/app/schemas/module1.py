@@ -186,6 +186,17 @@ class PositionCreate(APIModel):
     jd_text: str | None = None
 
 
+class PositionUpdate(APIModel):
+    title: str | None = None
+    headcount: int | None = None
+    budget: str | None = None
+    jd_text: str | None = None
+    status: PositionStatus | None = None
+    is_jd_complete: bool | None = None
+    is_cv_rubric_complete: bool | None = None
+    is_interview_complete: bool | None = None
+
+
 class RubricCriterion(APIModel):
     id: UUID = Field(default_factory=uuid4)
     position_id: UUID

@@ -130,10 +130,11 @@ class Module1Service:
         updated = self.repo.update_candidate(candidate.id, {"status": to_status})
         if not updated:
             raise AppError(404, "Candidate not found.")
+        position = self._position_or_404(candidate.position_id)
         self.repo.create_stage_event(
             CandidateStageEvent(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                campaign_id=position.campaign_id,
                 from_status=from_status,
                 to_status=to_status,
                 reason=reason,
@@ -467,6 +468,7 @@ class Module1Service:
     def open_interview(self, token: str) -> InterviewOpenResponse:
         invitation = self._valid_interview_invitation(token)
         self.repo.update_interview_invitation(invitation.id, {"status": InvitationStatus.OPENED})
+        candidate = self._candidate_or_404(invitation.candidate_id)
         position = self._position_or_404(invitation.campaign_id)
         campaign = self._campaign_or_404(position.campaign_id)
         session = self.repo.get_interview_session_by_invitation(invitation.id)

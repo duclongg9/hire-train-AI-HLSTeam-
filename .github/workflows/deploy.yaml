@@ -108,6 +108,23 @@ jobs:
           docker pull $ECR_REGISTRY/$ECR_REPOSITORY_NAME:backend-latest
           aws secretsmanager get-secret-value --secret-id $SECRETS_MANAGER_NAME --query SecretString --output text > /home/ubuntu/backend_raw.json
           python3 -c "import json,sys; d=json.load(open('/home/ubuntu/backend_raw.json')); print(''.join(f'{k}={v}\n' for k,v in d.items()), end='')" > /home/ubuntu/backend.env
+          
+          # Fetch temporary credentials from Instance Metadata Service (IMDS)
+          IMDS_TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+          IAM_ROLE=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/)
+          if [ ! -z "$IAM_ROLE" ]; then
+            CREDENTIALS_JSON=$(curl -s -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/$IAM_ROLE)
+            AWS_ACCESS_KEY_ID=$(echo "$CREDENTIALS_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('AccessKeyId', ''))")
+            AWS_SECRET_ACCESS_KEY=$(echo "$CREDENTIALS_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('SecretAccessKey', ''))")
+            AWS_SESSION_TOKEN=$(echo "$CREDENTIALS_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('Token', ''))")
+            
+            if [ ! -z "$AWS_ACCESS_KEY_ID" ]; then
+              echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> /home/ubuntu/backend.env
+              echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> /home/ubuntu/backend.env
+              echo "AWS_SESSION_TOKEN=$AWS_SESSION_TOKEN" >> /home/ubuntu/backend.env
+            fi
+          fi
+          
           docker stop hls-backend || true
           docker rm hls-backend || true
           docker run -d --name hls-backend -p 8000:8000 --restart always --env-file /home/ubuntu/backend.env $ECR_REGISTRY/$ECR_REPOSITORY_NAME:backend-latest
