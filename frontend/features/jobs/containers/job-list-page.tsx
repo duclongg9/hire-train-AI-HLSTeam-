@@ -16,6 +16,7 @@ import { shbJobs, type Job } from "@/lib/recruitment/public-data"
 
 export function JobListPage() {
   const [query, setQuery] = useState("")
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const [jobs, setJobs] = useState<Job[]>(shbJobs)
   const [loading, setLoading] = useState(false)
   const [department, setDepartment] = useState("Tất cả")
@@ -34,7 +35,7 @@ export function JobListPage() {
       })
       .catch((error) => {
         if (mounted) {
-          console.error(formatApiError(error), "Showing local demo jobs.")
+          console.warn(formatApiError(error), "Showing local demo jobs.")
         }
       })
       .finally(() => {
@@ -68,21 +69,51 @@ export function JobListPage() {
       <CandidateHero />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        <section id="open-jobs" className="-mt-16 rounded-lg border bg-white p-4 shadow-lg md:p-5">
-          <div className="grid gap-3 lg:grid-cols-[1fr_220px_220px_auto]">
-            <div className="relative">
+        <section id="open-jobs" className="relative z-10 -mt-16 rounded-lg border bg-white p-4 shadow-lg md:p-5">
+          <div className="grid items-center gap-3 lg:grid-cols-[1fr_220px_220px_auto]">
+            <div
+              className="relative"
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            >
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Tìm kiếm theo chức danh, kỹ năng..."
-                className="pl-9"
+                placeholder="Nhập chức danh, kỹ năng để hệ thống gợi ý..."
+                className="h-11 pl-9"
               />
+              {showSuggestions && query.length > 0 && (
+                <div className="absolute top-full z-50 mt-1 w-full rounded-md border border-slate-200 bg-white py-2 shadow-lg">
+                  <div className="px-3 py-1 text-xs font-semibold text-slate-500">Chức danh liên quan</div>
+                  <button
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    onClick={() => setQuery("Chuyên viên Tín dụng")}
+                  >
+                    Chuyên viên Tín dụng
+                  </button>
+                  <button
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    onClick={() => setQuery("Quản trị Rủi ro Tín dụng")}
+                  >
+                    Quản trị Rủi ro Tín dụng
+                  </button>
+                  <div className="mt-1 border-t border-slate-100 px-3 pt-2 pb-1 text-xs font-semibold text-slate-500">
+                    Kỹ năng liên quan
+                  </div>
+                  <button
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    onClick={() => setQuery("Phân tích tín dụng")}
+                  >
+                    Phân tích tín dụng
+                  </button>
+                </div>
+              )}
             </div>
             <select
               value={department}
               onChange={(event) => setDepartment(event.target.value)}
-              className="h-9 rounded-md border border-input bg-white px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-[#c6203f]/30"
+              className="h-11 rounded-md border border-input bg-white px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-[#c6203f]/30"
             >
               {departments.map((item) => (
                 <option key={item}>{item}</option>
@@ -91,13 +122,13 @@ export function JobListPage() {
             <select
               value={location}
               onChange={(event) => setLocation(event.target.value)}
-              className="h-9 rounded-md border border-input bg-white px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-[#c6203f]/30"
+              className="h-11 rounded-md border border-input bg-white px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-[#c6203f]/30"
             >
               {locations.map((item) => (
                 <option key={item}>{item}</option>
               ))}
             </select>
-            <Button className="bg-[#c6203f] text-white hover:bg-[#a91935]">
+            <Button className="h-11 bg-[#c6203f] px-8 text-white hover:bg-[#a91935]">
               <Search className="mr-2 h-4 w-4" />
               Tìm kiếm
             </Button>
@@ -108,7 +139,7 @@ export function JobListPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold text-slate-950">Việc làm tiêu biểu</h2>
+                <h2 className="text-2xl font-bold text-slate-950">Gợi ý dành riêng cho bạn ✨</h2>
                 <p className="mt-1 text-sm text-slate-500">{loading ? "Đang tải..." : `${filteredJobs.length} vị trí đang mở`}</p>
               </div>
               <Badge variant="outline" className="hidden border-[#f37021]/30 text-[#c6203f] sm:inline-flex">
@@ -131,7 +162,7 @@ export function JobListPage() {
                     </div>
                   </div>
                   <Link href={`/jobs/${job.slug}`} className="shrink-0">
-                    <Button variant="outline" className="border-[#c6203f] text-[#c6203f] hover:bg-[#c6203f] hover:text-white">
+                    <Button variant="outline" className="border-[#f37021] text-[#f37021] hover:bg-[#f37021] hover:text-white">
                       Xem thêm
                       <ChevronRight className="ml-2 h-4 w-4" />
                     </Button>
@@ -148,7 +179,7 @@ export function JobListPage() {
               </div>
               <h3 className="mt-4 font-bold text-slate-950">Gia nhập cùng SHB</h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                SHB chú trọng phát triển con người, lộ trình nghề nghiệp rõ ràng và môi trường làm việc chuyên nghiệp.
+                Hệ thống tự động gợi ý việc làm theo năng lực và định hướng nghề nghiệp của bạn.
               </p>
             </Card>
             <Card className="rounded-lg p-5">
@@ -156,10 +187,14 @@ export function JobListPage() {
               <ol className="mt-4 space-y-3 text-sm text-slate-600">
                 {["Nộp hồ sơ trực tuyến", "Nhận mật khẩu đăng nhập qua email", "Làm bài đánh giá năng lực", "Tham gia phỏng vấn AI"].map((item, index) => (
                   <li key={item} className="flex gap-3">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#102a62] text-xs font-bold text-white">
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${
+                        index === 3 ? "bg-gradient-to-br from-[#f37021] to-[#c6203f] shadow-sm" : "bg-[#102a62]"
+                      }`}
+                    >
                       {index + 1}
                     </span>
-                    <span>{item}</span>
+                    <span className={index === 3 ? "font-semibold text-slate-900" : ""}>{item}</span>
                   </li>
                 ))}
               </ol>

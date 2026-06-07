@@ -1,9 +1,14 @@
 import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
-import { Inter } from 'next/font/google'
+import { Inter, Be_Vietnam_Pro } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
+const beVietnamPro = Be_Vietnam_Pro({ 
+  weight: ['300', '400', '500', '600', '700'],
+  subsets: ['vietnamese'],
+  variable: '--font-be-vietnam-pro'
+})
 
 export const metadata: Metadata = {
   title: 'HireTrain AI - AI Recruitment Platform',
@@ -35,7 +40,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased text-slate-800`}>
+      <body className={`${inter.className} ${beVietnamPro.variable} antialiased text-slate-800`}>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
