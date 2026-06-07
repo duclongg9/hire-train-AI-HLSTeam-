@@ -1,5 +1,6 @@
 locals {
   common_tags = merge({ Project = var.project_name, Environment = var.environment, ManagedBy = "terraform" }, var.tags)
+  ec2_ami_id  = var.ec2_ami_id != "" ? var.ec2_ami_id : data.aws_ssm_parameter.ubuntu_ami.value
   
   docker_user_data = <<-EOT
     #!/bin/bash
@@ -39,6 +40,10 @@ locals {
     # Create symlink for docker-compose command compatibility
     ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose || true
   EOT
+}
+
+data "aws_ssm_parameter" "ubuntu_ami" {
+  name = "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
 }
 
 module "vpc" {
@@ -94,7 +99,7 @@ resource "aws_key_pair" "ec2_key_pair" {
 module "frontend_ec2" {
   source        = "./modules/ec2"
   name          = "frontend"
-  ami_id        = var.ec2_ami_id
+  ami_id        = local.ec2_ami_id
   instance_type = var.frontend_instance_type
   subnet_id     = module.vpc.public_subnet_id
   vpc_id        = module.vpc.vpc_id
@@ -112,14 +117,14 @@ module "frontend_ec2" {
 module "backend_ec2" {
   source        = "./modules/ec2"
   name          = "backend"
-  ami_id        = var.ec2_ami_id
+  ami_id        = local.ec2_ami_id
   instance_type = var.backend_instance_type
   subnet_id     = module.vpc.public_subnet_id
   vpc_id        = module.vpc.vpc_id
   key_name      = aws_key_pair.ec2_key_pair.key_name
   user_data     = local.docker_user_data
   ingress_rules = [
-    { from_port = 8000, to_port = 8000, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
+    { from_port = 8000, to_port = 8000, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id },
     { from_port = 22, to_port = 22, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] }
   ]
   iam_instance_profile = module.iam.ec2_instance_profile_name

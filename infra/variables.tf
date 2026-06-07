@@ -22,7 +22,11 @@ variable "availability_zone" {
 
 variable "backend_instance_type" { type = string }
 variable "frontend_instance_type" { type = string }
-variable "ec2_ami_id" { type = string }
+variable "ec2_ami_id" {
+  description = "Ubuntu EC2 AMI ID. Leave empty to use the latest Ubuntu 22.04 AMI from AWS SSM."
+  type        = string
+  default     = ""
+}
 
 variable "cache_node_type" { type = string }
 variable "cache_num_nodes" { type = number }

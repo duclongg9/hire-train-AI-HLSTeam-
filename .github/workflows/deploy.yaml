@@ -27,6 +27,24 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Resolve Backend Private IP for Frontend Build
+        env:
+          PROJECT_TAG: ${{ secrets.AWS_PROJECT_TAG || 'hire-train-AI-HLSTeam-' }}
+          BACKEND_INSTANCE_ID_SECRET: ${{ secrets.BACKEND_INSTANCE_ID }}
+        run: |
+          BACKEND_INSTANCE_ID="$BACKEND_INSTANCE_ID_SECRET"
+          if [ -z "$BACKEND_INSTANCE_ID" ]; then
+            BACKEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=backend" "Name=tag:Project,Values=$PROJECT_TAG" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+          fi
+
+          BACKEND_PRIVATE_IP=$(aws ec2 describe-instances --instance-ids "$BACKEND_INSTANCE_ID" --query "Reservations[0].Instances[0].PrivateIpAddress" --output text)
+          if [ -z "$BACKEND_PRIVATE_IP" ] || [ "$BACKEND_PRIVATE_IP" = "None" ]; then
+            echo "Could not resolve backend private IP for frontend build."
+            exit 1
+          fi
+
+          echo "BACKEND_PRIVATE_IP=$BACKEND_PRIVATE_IP" >> $GITHUB_ENV
+
       # 1. Build and Push Backend Image
       - name: Build and Push Backend Image
         env:
@@ -43,8 +61,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME || 'hls-backend' }}
           IMAGE_TAG: latest
+          BACKEND_PRIVATE_IP: ${{ env.BACKEND_PRIVATE_IP }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG ./frontend
+          docker build --build-arg BACKEND_PRIVATE_URL=http://$BACKEND_PRIVATE_IP:8000 -t $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG ./frontend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG
 
   deploy:
@@ -62,6 +81,8 @@ jobs:
 
       # 3. Fetch SSH Private Key and query EC2 Public & Private IPs dynamically
       - name: Prepare SSH Deployment Credentials
+        env:
+          PROJECT_TAG: ${{ secrets.AWS_PROJECT_TAG || 'hire-train-AI-HLSTeam-' }}
         run: |
           # 1. Get AWS Account ID and ECR registry URL dynamically
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -78,12 +99,12 @@ jobs:
           # 4. Find Frontend and Backend Instance IDs
           FRONTEND_INSTANCE_ID="${{ secrets.FRONTEND_INSTANCE_ID }}"
           if [ -z "$FRONTEND_INSTANCE_ID" ]; then
-            FRONTEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=frontend" "Name=tag:Project,Values=hire-train-AI-HLSTeam-" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+            FRONTEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=frontend" "Name=tag:Project,Values=$PROJECT_TAG" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
           fi
           
           BACKEND_INSTANCE_ID="${{ secrets.BACKEND_INSTANCE_ID }}"
           if [ -z "$BACKEND_INSTANCE_ID" ]; then
-            BACKEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=backend" "Name=tag:Project,Values=hire-train-AI-HLSTeam-" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+            BACKEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=backend" "Name=tag:Project,Values=$PROJECT_TAG" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
           fi
           
           # 5. Query public and private IPs using the instance IDs
