@@ -261,6 +261,16 @@ class Module1Service:
             raise AppError(404, "Public job is not active.")
         return campaign
 
+    def list_public_positions(self) -> list[Position]:
+        positions = self.repo.list_all_positions()
+        public_positions = []
+        for pos in positions:
+            if pos.status == PositionStatus.PUBLISHED:
+                campaign = self.repo.get_campaign(pos.campaign_id)
+                if campaign and campaign.status == CampaignStatus.ACTIVE:
+                    public_positions.append(pos)
+        return public_positions
+
     def apply_candidate(self, position_id: UUID, payload: CandidateApplyRequest) -> Candidate:
         position = self._position_or_404(position_id)
         if position.status != PositionStatus.PUBLISHED:

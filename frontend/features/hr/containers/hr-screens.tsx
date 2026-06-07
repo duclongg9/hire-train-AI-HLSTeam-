@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { type MouseEvent, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import {
@@ -429,12 +429,17 @@ export function TestReviewScreen({ onStatusChange }: { onStatusChange?: (saved: 
 export function CandidateDrawer({
   candidate,
   onClose,
+  onActionComplete,
 }: {
   candidate: Candidate | null
   onClose: () => void
+  onActionComplete?: () => Promise<void> | void
 }) {
   const searchParams = useSearchParams()
-  const positionId = searchParams.get("positionId") || window.localStorage.getItem("activePositionId") || ""
+  const positionId =
+    searchParams.get("positionId") ||
+    (typeof window !== "undefined" ? window.localStorage.getItem("activePositionId") : "") ||
+    ""
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null)
 
@@ -443,6 +448,7 @@ export function CandidateDrawer({
     setActionMessage(null)
     try {
       const text = await action()
+      await onActionComplete?.()
       setActionMessage({ type: "success", text })
     } catch (error) {
       setActionMessage({ type: "error", text: formatApiError(error, `${actionName} failed.`) })
@@ -731,6 +737,23 @@ export function CandidateRankingTable({
     )
   }
 
+  const requireActivePositionId = () => {
+    if (typeof window === "undefined") throw new Error("Missing position_id.")
+    const activePositionId = window.localStorage.getItem("activePositionId") || ""
+    if (!activePositionId) throw new Error("Missing position_id. Open this table from a position pipeline route.")
+    return activePositionId
+  }
+
+  const runQuickAction = (
+    event: MouseEvent<HTMLButtonElement>,
+    candidate: Candidate,
+    actionName: string,
+    actionFn: () => Promise<string>,
+  ) => {
+    event.stopPropagation()
+    onQuickAction?.(candidate, actionName, actionFn)
+  }
+
   return (
     <div className="space-y-4">
       {/* Top Toolbar */}
@@ -770,7 +793,7 @@ export function CandidateRankingTable({
                   <TableHead className="min-w-[300px]">Đánh giá Năng lực</TableHead>
                   <TableHead className="w-[140px]">Mức độ phù hợp (%)</TableHead>
                   <TableHead className="w-[140px]">Status</TableHead>
-                  <TableHead className="w-[100px] text-right">Action</TableHead>
+                  <TableHead className="w-[260px] text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -823,7 +846,86 @@ export function CandidateRankingTable({
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onViewMore(candidate); }}>Detail</Button>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {onQuickAction ? (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Score CV"
+                                disabled={Boolean(busyAction)}
+                                onClick={(event) =>
+                                  runQuickAction(event, candidate, "Score CV", async () => {
+                                    const activePositionId = requireActivePositionId()
+                                    await scorePositionCandidates(activePositionId, candidate.id)
+                                    return "CV score updated from backend."
+                                  })
+                                }
+                              >
+                                <RefreshCw className={cn("h-3.5 w-3.5", busyAction === "Score CV" && "animate-spin")} />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Invite test"
+                                disabled={Boolean(busyAction)}
+                                onClick={(event) =>
+                                  runQuickAction(event, candidate, "Invite test", async () => {
+                                    const link = await inviteCandidateToTest(candidate.id)
+                                    return `Test invitation: ${link.url}`
+                                  })
+                                }
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Invite interview"
+                                disabled={Boolean(busyAction)}
+                                onClick={(event) =>
+                                  runQuickAction(event, candidate, "Invite interview", async () => {
+                                    const link = await inviteCandidateToInterview(candidate.id)
+                                    return `Interview invitation: ${link.url}`
+                                  })
+                                }
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Pass candidate"
+                                className="text-emerald-700 hover:text-emerald-800"
+                                disabled={Boolean(busyAction)}
+                                onClick={(event) =>
+                                  runQuickAction(event, candidate, "Final pass", async () => {
+                                    await finalDecision(candidate.id, "PASSED", "Marked from HR pipeline quick action.")
+                                    return "Candidate marked as passed."
+                                  })
+                                }
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Reject candidate"
+                                className="text-red-700 hover:text-red-800"
+                                disabled={Boolean(busyAction)}
+                                onClick={(event) =>
+                                  runQuickAction(event, candidate, "Final reject", async () => {
+                                    await finalDecision(candidate.id, "REJECTED", "Marked from HR pipeline quick action.")
+                                    return "Candidate rejected."
+                                  })
+                                }
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          ) : null}
+                          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onViewMore(candidate); }}>Detail</Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import {
@@ -258,26 +258,54 @@ export function CandidateTestScreen() {
   const params = useParams<{ testToken?: string }>()
   const testToken = params?.testToken ?? ""
   const [current, setCurrent] = useState(0)
-  const [questions, setQuestions] = useState<CandidateTestQuestion[]>(demoTestQuestions)
+  const [questions, setQuestions] = useState<CandidateTestQuestion[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [timeLeft, setTimeLeft] = useState(15 * 60)
   const [durationSeconds, setDurationSeconds] = useState(15 * 60)
+  const [loadingTest, setLoadingTest] = useState(true)
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [timeUpOpen, setTimeUpOpen] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null)
+  const answersRef = useRef(answers)
+  const questionsRef = useRef(questions)
+  const timeLeftRef = useRef(timeLeft)
+  const durationSecondsRef = useRef(durationSeconds)
+  const submitRef = useRef<(autoSubmitted?: boolean) => Promise<void>>(async () => undefined)
+
+  useEffect(() => {
+    answersRef.current = answers
+  }, [answers])
+
+  useEffect(() => {
+    questionsRef.current = questions
+  }, [questions])
+
+  useEffect(() => {
+    timeLeftRef.current = timeLeft
+  }, [timeLeft])
+
+  useEffect(() => {
+    durationSecondsRef.current = durationSeconds
+  }, [durationSeconds])
 
   useEffect(() => {
     if (!testToken || testToken === "demo-token") {
+      setQuestions(demoTestQuestions)
+      setLoadingTest(false)
       return
     }
 
     let mounted = true
+    setLoadingTest(true)
+    setMessage(null)
+    setAnswers({})
+    setCurrent(0)
     openCandidateTest(testToken)
       .then(async (test) => {
         if (!mounted) return
         const mappedQuestions = test.questions.map(mapBackendQuestion)
-        setQuestions(mappedQuestions.length > 0 ? mappedQuestions : demoTestQuestions)
+        setQuestions(mappedQuestions)
         setTimeLeft(test.duration_seconds)
         setDurationSeconds(test.duration_seconds)
         try {
@@ -288,8 +316,12 @@ export function CandidateTestScreen() {
       })
       .catch((error) => {
         if (mounted) {
-          console.error(formatApiError(error, "Could not open test token."))
+          setQuestions([])
+          setMessage({ type: "error", text: formatApiError(error, "Could not open test token.") })
         }
+      })
+      .finally(() => {
+        if (mounted) setLoadingTest(false)
       })
 
     return () => {
@@ -297,27 +329,11 @@ export function CandidateTestScreen() {
     }
   }, [testToken])
 
-  useEffect(() => {
-    if (submitted) return
-    const interval = window.setInterval(() => {
-      setTimeLeft((value) => {
-        if (value <= 1) {
-          window.clearInterval(interval)
-          setSubmitted(true)
-          setTimeUpOpen(true)
-          return 0
-        }
-        return value - 1
-      })
-    }, 1000)
-    return () => window.clearInterval(interval)
-  }, [submitted])
-
   const question = questions[current] ?? questions[0]
   const answeredCount = Object.keys(answers).length
 
   const submit = async (autoSubmitted = false) => {
-    if (!question) return
+    if (questionsRef.current.length === 0) return
     if (!testToken || testToken === "demo-token") {
       setSubmitted(true)
       return
@@ -327,9 +343,9 @@ export function CandidateTestScreen() {
     setMessage(null)
     try {
       await submitCandidateTest(testToken, {
-        answers: Object.entries(answers).map(([question_id, selected_option_id]) => ({ question_id, selected_option_id })),
+        answers: Object.entries(answersRef.current).map(([question_id, selected_option_id]) => ({ question_id, selected_option_id })),
         auto_submitted: autoSubmitted,
-        duration_seconds: durationSeconds - timeLeft,
+        duration_seconds: autoSubmitted ? durationSecondsRef.current : durationSecondsRef.current - timeLeftRef.current,
       })
       setSubmitted(true)
       setMessage({ type: "success", text: "Test submitted to backend successfully." })
@@ -338,6 +354,48 @@ export function CandidateTestScreen() {
     } finally {
       setSubmitting(false)
     }
+  }
+  submitRef.current = submit
+
+  useEffect(() => {
+    if (submitted || loadingTest || questions.length === 0) return
+    const interval = window.setInterval(() => {
+      setTimeLeft((value) => {
+        if (value <= 1) {
+          window.clearInterval(interval)
+          setTimeUpOpen(true)
+          void submitRef.current(true)
+          return 0
+        }
+        return value - 1
+      })
+    }, 1000)
+    return () => window.clearInterval(interval)
+  }, [submitted, loadingTest, questions.length])
+
+  if (loadingTest) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+          <Card className="rounded-lg p-8 text-center shadow-sm">
+            <Clock className="mx-auto h-8 w-8 animate-pulse text-[#0033A0]" />
+            <h1 className="mt-4 text-2xl font-bold text-foreground">Loading test</h1>
+            <p className="mt-2 text-sm text-muted-foreground">Fetching your candidate test from the backend.</p>
+          </Card>
+        </main>
+      </div>
+    )
+  }
+
+  if (!question) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+          {message ? <FormMessage type={message.type}>{message.text}</FormMessage> : null}
+          <EmptyState title="No test questions" description="This test token is valid only when the backend returns published questions." />
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -519,146 +577,118 @@ export function WaitingRoomScreen() {
           </div>
         </Card>
       </main>
-      <VoiceConsentModal open={consentOpen} onOpenChange={setConsentOpen} onConsent={acceptConsent} />
-    </div>
-  )
-}
-
-type InterviewRoomState = "listening" | "ai-speaking" | "candidate-speaking" | "completed" | "failed"
-type InterviewLiveState = Exclude<InterviewRoomState, "completed" | "failed">
-
-export function InterviewRoomScreen() {
-  const router = useRouter()
-  const [timeLeft, setTimeLeft] = useState(15 * 60)
-  const [state, setState] = useState<InterviewRoomState>("listening")
-  const [networkOpen, setNetworkOpen] = useState(false)
-  const [noiseOpen, setNoiseOpen] = useState(false)
-  const [reminderDismissed, setReminderDismissed] = useState(false)
-  
-  const [transcript, setTranscript] = useState([
-    { speaker: "AI", text: "Walk me through a frontend decision where quality changed the outcome." },
-    { speaker: "Candidate", text: "I balanced performance, validation, and scanning speed for recruiters." },
-    { speaker: "AI", text: "What tradeoff did you reject?" },
-  ])
-  const [candidateDraft, setCandidateDraft] = useState("")
-  const [isEditing, setIsEditing] = useState(false)
-
-  useEffect(() => {
-    if (state === "completed" || state === "failed") return
-    const timer = window.setInterval(() => {
-      setTimeLeft((value) => Math.max(0, value - 1))
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [state])
-
-  useEffect(() => {
-    if (state === "completed" || state === "failed" || isEditing) return
-    const states: InterviewLiveState[] = ["listening", "ai-speaking", "candidate-speaking"]
-    const interval = window.setInterval(() => {
-      setState((current) => {
-        if (current === "completed" || current === "failed") return current
-        return states[(states.indexOf(current) + 1) % states.length] ?? "listening"
-      })
-    }, 4500)
-    return () => window.clearInterval(interval)
-  }, [state, isEditing])
-
-  const showReminder = timeLeft <= 120 && !reminderDismissed && state !== "completed" && state !== "failed"
-
-  if (state === "completed" || state === "failed") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-white">
-        <Card className="max-w-lg rounded-lg border-white/10 bg-white/5 p-8 text-center text-white">
-          <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-400" />
-          <h1 className="mt-5 text-3xl font-bold">{state === "completed" ? "Interview completed" : "Interview failed"}</h1>
-          <p className="mt-2 text-white/60">
-            {state === "completed" ? "Your responses were saved in the mock session." : "The reconnect window ended before the call recovered."}
-          </p>
-          <Link href="/candidate/thank-you">
-            <Button className="mt-6 bg-[#F37021] text-white hover:bg-[#d95f18]">Close</Button>
-          </Link>
-        </Card>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      {showReminder ? (
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      {showReminder && (
         <div className="animate-pulse bg-red-600 px-4 py-3 text-center text-sm font-semibold text-white">
           Interview time reminder: 2 minutes remaining.
           <button type="button" className="ml-4 underline" onClick={() => setReminderDismissed(true)}>
             Dismiss
           </button>
         </div>
-      ) : null}
+      )}
 
-      <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 py-6 sm:px-6">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm text-white/50">AI Voice Interview</p>
-            <h1 className="text-2xl font-bold">Senior Frontend Engineer</h1>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 font-mono text-xl font-bold">
-            <Timer className="h-5 w-5" />
-            {formatSeconds(timeLeft)}
-          </div>
-        </header>
+      <header className="flex items-center justify-between gap-4 px-6 py-4 border-b border-white/10">
+        <div>
+          <p className="text-sm text-white/50">AI Voice Interview</p>
+          <h1 className="text-xl font-bold">Senior Frontend Engineer</h1>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 font-mono text-lg font-bold">
+          <Timer className="h-5 w-5" />
+          {formatSeconds(timeLeft)}
+        </div>
+      </header>
 
-        <section className="grid flex-1 place-items-center py-10">
-          <div className="text-center">
-            <div className={cn("relative mx-auto flex h-64 w-64 items-center justify-center rounded-full border border-white/10", state === "ai-speaking" ? "bg-blue-500/10" : state === "candidate-speaking" ? "bg-[#F37021]/10" : "bg-white/5")}>
-              <div className="absolute inset-8 animate-ping rounded-full border border-white/20" />
-              <div className="absolute inset-14 animate-pulse rounded-full border border-white/20" />
+      <main className="flex-1 grid lg:grid-cols-2">
+        {/* LEFT PANEL: AI Visualization & Transcript */}
+        <section className="flex flex-col border-r border-white/10 p-6 relative">
+          <div className="absolute top-4 right-4 flex gap-2">
+            <Button variant="outline" size="sm" className="border-white/20 bg-transparent text-white hover:bg-white/10" onClick={() => setNetworkOpen(true)}>
+              <Wifi className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="border-white/20 bg-transparent text-white hover:bg-white/10" onClick={() => setNoiseOpen(true)}>
+              <Volume2 className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" className="border-white/20 bg-transparent text-white hover:bg-white/10" onClick={() => setTimeLeft(120)}>
+              <AlertTriangle className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex-1 flex flex-col items-center justify-center py-10 min-h-[300px]">
+            <div className={cn("relative flex h-48 w-48 items-center justify-center rounded-full border border-white/10 transition-colors duration-500", state === "ai-speaking" ? "bg-blue-500/20" : state === "candidate-speaking" ? "bg-[#F37021]/20" : "bg-white/5")}>
+              {state === "ai-speaking" && (
+                <>
+                  <div className="absolute inset-4 animate-ping rounded-full border border-blue-400/30" />
+                  <div className="absolute inset-10 animate-pulse rounded-full border border-blue-400/50" />
+                </>
+              )}
+              {state === "candidate-speaking" && (
+                <div className="absolute inset-4 animate-pulse rounded-full border border-[#F37021]/30" />
+              )}
               <div className="flex items-end gap-1">
-                {Array.from({ length: 24 }).map((_, index) => (
+                {Array.from({ length: 16 }).map((_, index) => (
                   <span
                     key={index}
-                    className={cn("w-1.5 rounded-full", state === "ai-speaking" ? "bg-blue-300" : state === "candidate-speaking" ? "bg-[#F37021]" : "bg-white/30")}
-                    style={{ height: `${18 + ((index * 13) % 54)}px` }}
+                    className={cn("w-1.5 rounded-full transition-all duration-300", state === "ai-speaking" ? "bg-blue-400" : state === "candidate-speaking" ? "bg-[#F37021]" : "bg-white/30")}
+                    style={{ height: state !== "idle" ? `${20 + Math.random() * 40}px` : '20px' }}
                   />
                 ))}
               </div>
             </div>
-            <p className="mt-8 text-2xl font-semibold">
-              {state === "listening" ? "AI is listening" : state === "ai-speaking" ? "AI is speaking" : "Candidate speaking"}
+            <p className="mt-6 text-xl font-semibold">
+              {state === "idle" ? "Đang chờ..." : state === "ai-speaking" ? "AI đang nói..." : "Bạn đang trả lời..."}
             </p>
-            <p className="mt-2 text-white/50">Live transcript is updating from mock voice events.</p>
+          </div>
+
+          <div className="h-64 mt-4 bg-white/5 rounded-xl border border-white/10 p-4 overflow-y-auto flex flex-col gap-3">
+            {transcript.length === 0 && <p className="text-white/40 text-sm text-center mt-auto mb-auto">Cuộc trò chuyện sẽ hiển thị tại đây</p>}
+            {transcript.map((t, i) => (
+              <div key={i} className={cn("max-w-[85%] p-3 rounded-lg text-sm", t.speaker === "AI" ? "bg-blue-500/20 text-blue-50 mr-auto rounded-tl-none" : "bg-[#F37021]/20 text-orange-50 ml-auto rounded-tr-none")}>
+                <span className="font-semibold block mb-1 opacity-70 text-xs">{t.speaker}</span>
+                {t.text}
+              </div>
+            ))}
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-[1fr_280px]">
-          <Card className="rounded-lg border-white/10 bg-white/5 p-4 text-white flex flex-col">
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="font-semibold">Live transcript</h2>
+        {/* RIGHT PANEL: Candidate Controls */}
+        <section className="p-6 flex flex-col justify-center items-center bg-slate-900/50">
+          <div className="max-w-md w-full flex flex-col items-center text-center">
+            <div className="w-24 h-24 rounded-full bg-slate-800 flex items-center justify-center mb-6 border-4 border-slate-700">
+              <Mic className={cn("w-10 h-10", isRecording ? "text-[#F37021] animate-pulse" : "text-slate-400")} />
             </div>
-            <div className="space-y-2 text-sm text-white/70 flex-1 overflow-y-auto">
-              {transcript.map((t, i) => (
-                <p key={i}><span className={t.speaker === "AI" ? "text-blue-300 font-medium" : "text-[#F37021] font-medium"}>{t.speaker}:</span> {t.text}</p>
-              ))}
+            
+            <h2 className="text-2xl font-semibold mb-2">Đến lượt bạn trả lời</h2>
+            <p className="text-slate-400 mb-8 max-w-sm">
+              {isRecording 
+                ? "Hệ thống đang ghi âm câu trả lời của bạn. Vui lòng nói rõ ràng."
+                : "Nghe câu hỏi từ AI và nhấn bắt đầu ghi âm khi bạn đã sẵn sàng."}
+            </p>
+
+            <div className="flex flex-col gap-4 w-full">
+              {!isRecording ? (
+                <Button 
+                  size="lg" 
+                  className="w-full bg-[#0033A0] hover:bg-[#00256f] text-white py-6 text-lg rounded-xl shadow-[0_0_20px_rgba(0,51,160,0.4)] transition-all hover:shadow-[0_0_30px_rgba(0,51,160,0.6)]"
+                  onClick={startRecording}
+                  disabled={state === "ai-speaking" || currentQuestionIndex >= MOCK_QUESTIONS.length}
+                >
+                  <Mic className="mr-2 h-5 w-5" /> Bắt đầu ghi âm
+                </Button>
+              ) : (
+                <Button 
+                  size="lg" 
+                  className="w-full bg-[#F37021] hover:bg-[#d95f18] text-white py-6 text-lg rounded-xl shadow-[0_0_20px_rgba(243,112,33,0.4)] animate-pulse"
+                  onClick={stopRecordingAndSubmit}
+                >
+                  <Send className="mr-2 h-5 w-5" /> Hoàn thành câu trả lời
+                </Button>
+              )}
               
-              
-            </div>
-          </Card>
-          <Card className="rounded-lg border-white/10 bg-white/5 p-4 text-white">
-            <div className="grid gap-2">
-              <Button variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10" onClick={() => setNetworkOpen(true)}>
-                <Wifi className="mr-2 h-4 w-4" />
-                Network
-              </Button>
-              <Button variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10" onClick={() => setNoiseOpen(true)}>
-                <Volume2 className="mr-2 h-4 w-4" />
-                Noise
-              </Button>
-              <Button variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10" onClick={() => setTimeLeft(120)}>
-                <AlertTriangle className="mr-2 h-4 w-4" />
-                2 min
-              </Button>
-              <Button className="bg-red-600 text-white hover:bg-red-700" onClick={() => router.push("/candidate/thank-you")}>
-                End Interview
+              <Button variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-950/30" onClick={() => setState("completed")}>
+                Kết thúc phỏng vấn sớm
               </Button>
             </div>
-          </Card>
+          </div>
         </section>
       </main>
 

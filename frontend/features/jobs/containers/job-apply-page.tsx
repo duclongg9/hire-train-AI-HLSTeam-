@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FormMessage, UploadPanel } from "@/shared/components/recruitment-common"
-import { formatApiError, getPublicJob, submitCandidateApplication } from "@/features/jobs/api/public-jobs-api"
+import { applyFileToPublicJob, formatApiError, getPublicJob } from "@/features/jobs/api/public-jobs-api"
 import { CandidateSiteHeader } from "@/features/jobs/components/candidate-site-header"
 import { jobFromPosition } from "@/features/jobs/mappers/job-from-position"
 import { looksLikeUuid } from "@/features/jobs/utils/job-routing"
@@ -80,47 +80,11 @@ export function JobApplyPage({ jobSlug }: { jobSlug?: string }) {
     setSubmitting(true)
     setMessage(null)
 
-    if (!looksLikeUuid(job.id)) {
-      window.sessionStorage.setItem(
-        "candidateApplyNotice",
-        "Demo application captured locally. Publish a backend campaign to submit this form to the API.",
-      )
-      window.localStorage.setItem("candidateEmail", form.email)
-      setSubmitting(false)
-      router.push("/candidate/login?submitted=1")
-      return
-    }
-
     try {
-      await submitCandidateApplication({
-        campaignId: job.id,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        jobTitle: form.jobTitle,
-        workLocation: form.workLocation,
-        cvFileName: cvFile.name,
-      })
+      await applyFileToPublicJob(job.id, cvFile)
 
       window.sessionStorage.setItem(
         "candidateApplyNotice",
-        "Application submitted successfully. Check your email for the next recruitment step.",
-      )
-      window.localStorage.setItem("candidateEmail", form.email)
-      router.push("/candidate/login?submitted=1")
-    } catch (error) {
-      setMessage({ type: "error", text: formatApiError(error, "Application failed.") })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <CandidateSiteHeader />
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <Link href={`/jobs/${job.slug}`} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-[#c6203f]">
-          <ArrowLeft className="h-4 w-4" />
           Quay lại tin tuyển dụng
         </Link>
         <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_300px]">

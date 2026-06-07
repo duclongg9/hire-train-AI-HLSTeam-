@@ -123,6 +123,9 @@ class MockRepository:
     def list_positions(self, campaign_id: UUID) -> list[Position]:
         return [pos for pos in self.positions.values() if pos.campaign_id == campaign_id]
 
+    def list_all_positions(self) -> list[Position]:
+        return list(self.positions.values())
+
     def get_position(self, position_id: UUID) -> Position | None:
         return self.positions.get(position_id)
 

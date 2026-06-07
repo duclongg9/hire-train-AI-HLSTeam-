@@ -154,6 +154,7 @@ class User(APIModel):
 class Campaign(APIModel):
     id: UUID = Field(default_factory=uuid4)
     title: str
+    department_scope: str | None = None
     jd_text: str | None = None
     status: CampaignStatus = CampaignStatus.DRAFT
     public_token: str | None = None
@@ -161,6 +162,8 @@ class Campaign(APIModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     deadline_at: datetime | None = None
+    created_at: datetime = Field(default_factory=now_utc)
+    updated_at: datetime = Field(default_factory=now_utc)
 
 
 class Position(APIModel):
@@ -405,15 +408,18 @@ class MockLoginRequest(APIModel):
 
 class CampaignCreate(APIModel):
     title: str
+    department_scope: str | None = None
     jd_text: str | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
     deadline_at: datetime | None = None
     created_by: UUID | None = None
+    status: CampaignStatus = CampaignStatus.DRAFT
 
 
 class CampaignUpdate(APIModel):
     title: str | None = None
+    department_scope: str | None = None
     jd_text: str | None = None
     status: CampaignStatus | None = None
     start_date: datetime | None = None
