@@ -70,6 +70,12 @@ resource "aws_instance" "this" {
   # PrivateLink without needing long-lived credentials.
   iam_instance_profile = var.iam_instance_profile != "" ? var.iam_instance_profile : null
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_put_response_hop_limit = 2
+    http_tokens                 = "optional"
+  }
+
   tags = merge(var.tags, {
     Name = var.name
   })

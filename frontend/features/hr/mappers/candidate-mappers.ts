@@ -39,8 +39,8 @@ export function mapBackendLeaderboardRow(row: BackendLeaderboardRow, index: numb
     yearsExperience: 0,
     salaryExpectation: undefined,
     aiRecommendation: row.score?.badge === "STRONG" ? "Recommended for shortlist." : "Needs HR review.",
-    strengths: matchedSkills,
-    weaknesses: row.score?.badge === "GAP" ? ["Some required evidence is missing."] : [],
+    strengths: matchedSkills.map(skill => ({ trait: skill, evidence: "Matched from backend" })),
+    weaknesses: row.score?.badge === "GAP" ? [{ trait: "Role Evidence", evidence: "Some required evidence is missing." }] : [],
     riskFlags: row.score?.risk_flags ?? [],
     reasoning: row.score?.ai_reasoning ? [row.score.ai_reasoning] : [candidate.cv_text ?? "CV text is pending extraction."],
   }
