@@ -216,7 +216,13 @@ def create_position_upload(
             budget=budget,
             jd_text=text
         )
-        return service.create_position(campaign_id, payload)
+        position = service.create_position(campaign_id, payload)
+        service.analyze_jd(position.id)
+        service.generate_test_questions(position.id, GenerateTestQuestionsRequest(count=10))
+        service.ensure_default_interview_rubric(position.id)
+        published = service.publish_position(position.id)
+        service.publish_campaign(campaign_id)
+        return published
     except AppError as e:
         raise e
     except Exception as e:
@@ -230,7 +236,7 @@ def analyze_jd(position_id: UUID, service: Module1Service = Depends(service_dep)
 
 @router.post("/positions/ai-core/jd/extract-rubric")
 def extract_rubric(
-    position_id: UUID = Body(...),
+    position_id: UUID = Form(...),
     file: UploadFile = File(...),
     service: Module1Service = Depends(service_dep),
 ):

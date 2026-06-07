@@ -137,8 +137,8 @@ export async function saveInterviewRubric(positionId: string, groups: BackendInt
   })
 }
 
-export function listCandidates(campaignId: string) {
-  return request<BackendCandidate[]>(`/campaigns/${campaignId}/candidates`)
+export function listCandidates(positionId: string) {
+  return request<BackendCandidate[]>(`/positions/${positionId}/candidates`)
 }
 
 export function listLeaderboard(positionId: string) {

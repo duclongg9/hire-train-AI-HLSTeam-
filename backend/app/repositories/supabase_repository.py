@@ -18,6 +18,7 @@ from app.schemas.module1 import (
     InterviewEvent,
     InterviewInvitation,
     InterviewReport,
+    InterviewRubricGroup,
     InterviewSession,
     Position,
     RubricCriterion,
@@ -181,6 +182,25 @@ class SupabaseRepository:
                     rows.append(cur.fetchone())
                 conn.commit()
         return [self._row_to_model(RubricCriterion, row) for row in rows]
+
+    def list_interview_rubrics(self, position_id: UUID) -> list[InterviewRubricGroup]:
+        row = self._fetch_one("select groups from public.interview_rubrics where position_id = %s", (position_id,))
+        if not row:
+            return []
+        return [InterviewRubricGroup(**item) for item in row.get("groups", [])]
+
+    def replace_interview_rubrics(self, position_id: UUID, groups: list[InterviewRubricGroup]) -> list[InterviewRubricGroup]:
+        payload = [group.model_dump(mode="python") for group in groups]
+        self._execute(
+            """
+            insert into public.interview_rubrics (position_id, groups, created_at, updated_at)
+            values (%s, %s, %s, %s)
+            on conflict (position_id)
+            do update set groups = excluded.groups, updated_at = excluded.updated_at
+            """,
+            (position_id, payload, now_utc(), now_utc()),
+        )
+        return groups
 
     def list_test_questions(self, position_id: UUID, published_only: bool = False) -> list[TestQuestion]:
         sql = "select * from public.test_questions where position_id = %s"

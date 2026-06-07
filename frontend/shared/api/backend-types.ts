@@ -85,7 +85,7 @@ export interface BackendInterviewRubricGroup {
 
 export interface BackendRubricCriterion {
   id: string
-  campaign_id: string
+  position_id: string
   category: "hard_skill" | "soft_skill" | "experience" | "certification"
   name: string
   weight: number
@@ -96,7 +96,7 @@ export interface BackendRubricCriterion {
 
 export interface BackendTestQuestion {
   id: string
-  campaign_id: string
+  position_id: string
   question_text: string
   question_type: string
   difficulty: string | null
@@ -112,7 +112,7 @@ export interface BackendTestQuestion {
 
 export interface BackendCandidate {
   id: string
-  campaign_id: string
+  position_id: string
   full_name: string
   email: string
   phone: string | null
@@ -128,7 +128,7 @@ export interface BackendCandidate {
 export interface BackendCandidateScore {
   id: string
   candidate_id: string
-  campaign_id: string
+  position_id: string
   score: number
   badge: "STRONG" | "GAP" | "HIGH_RISK"
   ai_reasoning: string

@@ -33,6 +33,8 @@ from app.schemas.module1 import (
     InterviewEventCreate,
     InterviewInvitation,
     InterviewOpenResponse,
+    InterviewRubricCriterion,
+    InterviewRubricGroup,
     InterviewSession,
     InterviewSessionStatus,
     InvitationStatus,
@@ -89,6 +91,56 @@ class Module1Service:
         if not rubric:
             raise AppError(400, "Position rubric is required for this action.")
         return rubric
+
+    def ensure_default_interview_rubric(self, position_id: UUID) -> list[InterviewRubricGroup]:
+        existing = self.repo.list_interview_rubrics(position_id)
+        if existing:
+            return existing
+
+        groups = [
+            InterviewRubricGroup(
+                id="voice-interview-core",
+                name="AI Voice Interview",
+                expanded=True,
+                criteria=[
+                    InterviewRubricCriterion(
+                        id="intro-fit",
+                        index=1,
+                        criterion="Giới thiệu và động lực ứng tuyển",
+                        description="Đánh giá mức độ rõ ràng khi giới thiệu bản thân, hiểu vị trí và động lực phù hợp với SHB.",
+                        weight=20,
+                        tone="professional",
+                    ),
+                    InterviewRubricCriterion(
+                        id="retail-credit",
+                        index=2,
+                        criterion="Tư duy tín dụng khách hàng cá nhân",
+                        description="Đánh giá khả năng phân tích hồ sơ, dòng tiền, CIC, tài sản bảo đảm và rủi ro tín dụng.",
+                        weight=30,
+                        tone="analytical",
+                    ),
+                    InterviewRubricCriterion(
+                        id="customer-growth",
+                        index=3,
+                        criterion="Phát triển và chăm sóc khách hàng",
+                        description="Đánh giá cách ứng viên xây dựng niềm tin, xử lý phản đối và duy trì quan hệ dài hạn.",
+                        weight=25,
+                        tone="empathetic",
+                    ),
+                    InterviewRubricCriterion(
+                        id="compliance-risk",
+                        index=4,
+                        criterion="Tuân thủ và xử lý tình huống rủi ro",
+                        description="Đánh giá khả năng tuân thủ KYC, bảo mật thông tin và xử lý tình huống nhạy cảm.",
+                        weight=25,
+                        tone="careful",
+                    ),
+                ],
+            )
+        ]
+        saved = self.repo.replace_interview_rubrics(position_id, groups)
+        self.repo.update_position(position_id, {"is_interview_complete": True})
+        return saved
 
     def _position_or_404(self, position_id: UUID) -> Position:
         # Assuming get_position exists or we can list and filter. Wait, is get_position implemented?
@@ -220,7 +272,7 @@ class Module1Service:
         position = self._position_or_404(position_id)
         rubric = self._rubric_or_error(position_id)
         
-        if position.jd_text and ("Quan hệ Khách hàng Cá nhân" in position.jd_text or "QUAN HỆ KHÁCH HÀNG" in position.jd_text):
+        if False and position.jd_text:
             from app.schemas.module1 import TestQuestion, TestQuestionStatus
             questions = [
                 TestQuestion(position_id=position.id, question_text="Trong quy trình cho vay khách hàng cá nhân, yếu tố nào quan trọng nhất để đánh giá rủi ro tín dụng?", question_type="multiple_choice", difficulty="medium", skill_tag="Tín dụng", options=[{"id": "A", "text": "Lịch sử tín dụng (CIC) và nguồn thu nhập ổn định"}, {"id": "B", "text": "Mối quan hệ của khách hàng với ngân hàng"}, {"id": "C", "text": "Giá trị tài sản đảm bảo (TSĐB)"}, {"id": "D", "text": "Mục đích sử dụng vốn vay"}], correct_option_id="A", explanation="CIC và nguồn thu nhập là yếu tố quyết định khả năng trả nợ, quan trọng nhất trong việc đánh giá rủi ro tín dụng.", status=TestQuestionStatus.APPROVED, order_index=0),
@@ -272,11 +324,14 @@ class Module1Service:
         self.repo.create_audit_log("POSITION_PUBLISHED", "position", position_id)
         return updated
 
-    def get_public_job(self, campaign_id: UUID) -> Campaign:
-        campaign = self._campaign_or_404(campaign_id)
+    def get_public_job(self, position_id: UUID) -> Position:
+        position = self._position_or_404(position_id)
+        if position.status != PositionStatus.PUBLISHED:
+            raise AppError(404, "Public job is not active.")
+        campaign = self._campaign_or_404(position.campaign_id)
         if campaign.status != CampaignStatus.ACTIVE:
             raise AppError(404, "Public job is not active.")
-        return campaign
+        return position
 
     def list_public_positions(self) -> list[Position]:
         positions = self.repo.list_all_positions()
@@ -366,25 +421,8 @@ class Module1Service:
         if candidate.position_id != position_id:
             raise AppError(400, "Candidate does not belong to this position.")
         
-        if "Kim Anh" in candidate.full_name or "Lê Thị Kim Anh" in candidate.full_name:
-            from app.schemas.module1 import CandidateScore, CandidateBadge
-            score = CandidateScore(
-                candidate_id=candidate.id,
-                position_id=position.id,
-                score=95.0,
-                badge=CandidateBadge.STRONG,
-                ai_reasoning="Ứng viên cực kỳ phù hợp với JD Chuyên viên Quan hệ Khách hàng Cá nhân. Có 7 năm kinh nghiệm tại HSBC và Standard Chartered, quản lý AUM 280 tỷ đồng và liên tục vượt KPI 130-150%. Đáp ứng vượt mức yêu cầu về tín dụng, huy động vốn, và kỹ năng tư vấn khách hàng cá nhân.",
-                score_breakdown={
-                    "Kinh nghiệm": 98,
-                    "Kỹ năng Tín dụng/Huy động": 95,
-                    "Bằng cấp/Chứng chỉ": 90,
-                    "Kỹ năng mềm": 95
-                },
-                risk_flags=["Mức lương kỳ vọng có thể cao hơn ngân sách do profile Senior"]
-            )
-        else:
-            score = self.ai.score_candidate(candidate, rubric)
-            
+        score = self.ai.score_candidate(candidate, rubric)
+
         saved = self.repo.save_candidate_score(score)
         self._transition_candidate(candidate, CandidateStatus.CV_SCORED, "CV scored by AI")
         self.repo.create_audit_log("CANDIDATE_SCORED", "candidate", candidate.id, {"score": saved.score})
@@ -426,12 +464,12 @@ class Module1Service:
                 email_type=EmailType.TEST_INVITATION,
                 recipient_email=candidate.email,
                 subject="Your HireTrain AI professional test invitation",
-                body=f"Open your professional test link: /api/candidate/test/{raw_token}",
+                body=f"Open your professional test link: /candidate/test/{raw_token}",
             )
         )
         saved_event = self.repo.create_email_event(event)
         self._transition_candidate(candidate, CandidateStatus.TEST_INVITED, "Test invitation sent", metadata={"invitation_id": str(invitation.id)})
-        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.position_id, token=raw_token, url=f"/api/candidate/test/{raw_token}", expires_at=invitation.expires_at, email_event=saved_event)
+        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.position_id, token=raw_token, url=f"/candidate/test/{raw_token}", expires_at=invitation.expires_at, email_event=saved_event)
 
     def open_test(self, token: str) -> TestOpenResponse:
         invitation = self._valid_test_invitation(token)
@@ -505,12 +543,12 @@ class Module1Service:
                 email_type=EmailType.INTERVIEW_INVITATION,
                 recipient_email=candidate.email,
                 subject="Your HireTrain AI virtual interview invitation",
-                body=f"Open your virtual interview link: /api/candidate/interview/{raw_token}",
+                body=f"Open your virtual interview link: /candidate/interview/{raw_token}/waiting-room",
             )
         )
         saved_event = self.repo.create_email_event(event)
         self._transition_candidate(candidate, CandidateStatus.INTERVIEW_INVITED, "Interview invitation sent", metadata={"invitation_id": str(invitation.id)})
-        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.position_id, token=raw_token, url=f"/api/candidate/interview/{raw_token}", expires_at=invitation.expires_at, email_event=saved_event)
+        return TokenLinkResponse(invitation_id=invitation.id, candidate_id=candidate.id, campaign_id=candidate.position_id, token=raw_token, url=f"/candidate/interview/{raw_token}/waiting-room", expires_at=invitation.expires_at, email_event=saved_event)
     def open_interview(self, token: str) -> InterviewOpenResponse:
         invitation = self._valid_interview_invitation(token)
         self.repo.update_interview_invitation(invitation.id, {"status": InvitationStatus.OPENED})

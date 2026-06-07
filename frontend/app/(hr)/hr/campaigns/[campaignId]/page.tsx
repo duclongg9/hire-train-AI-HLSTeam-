@@ -86,6 +86,7 @@ export default function CampaignDetailPage() {
     setSubmitError("")
     try {
       let newPos: BackendPosition
+      const shouldRefreshCampaign = Boolean(fileUploaded)
       if (fileUploaded) {
         newPos = await createPositionFromFile(
           campaignId,
@@ -98,10 +99,14 @@ export default function CampaignDetailPage() {
           headcount: parseInt(form.headcount) || 1,
         })
       }
-      setPositions((prev) => [newPos, ...prev])
       setIsSlideOpen(false)
       setForm({ title: "", headcount: "1" })
       setFileUploaded(null)
+      if (shouldRefreshCampaign) {
+        await fetchAll()
+      } else {
+        setPositions((prev) => [newPos, ...prev])
+      }
     } catch (err) {
       setSubmitError(formatApiError(err, "Không thể tạo vị trí mới."))
     } finally {
