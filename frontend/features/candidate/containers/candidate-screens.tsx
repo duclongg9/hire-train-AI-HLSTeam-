@@ -429,14 +429,47 @@ export function WaitingRoomScreen() {
   const router = useRouter()
   const params = useParams<{ interviewToken?: string }>()
   const interviewToken = params?.interviewToken ?? "demo-token"
-  const [micStatus, setMicStatus] = useState<"idle" | "checking" | "success" | "failed">("idle")
+  
+  const [candidateEmail, setCandidateEmail] = useState("Ứng viên")
   const [consentOpen, setConsentOpen] = useState(false)
   const [consentGranted, setConsentGranted] = useState(false)
+  
+  // Checklist statuses
+  const [networkStatus, setNetworkStatus] = useState<"idle" | "checking" | "success" | "failed">("idle")
+  const [cameraStatus, setCameraStatus] = useState<"idle" | "checking" | "success" | "failed">("idle")
+  const [micStatus, setMicStatus] = useState<"idle" | "checking" | "success" | "failed">("idle")
+  
+  // Audio Visualizer bars
+  const [audioLevel, setAudioLevel] = useState<number[]>([10, 10, 10, 10, 10])
 
   useEffect(() => {
+    const email = window.localStorage.getItem("candidateEmail")
+    if (email) setCandidateEmail(email)
+
     const granted = window.sessionStorage.getItem("voiceConsentGranted") === "true"
     setConsentGranted(granted)
-    setConsentOpen(!granted)
+    if (!granted) setConsentOpen(true)
+  }, [])
+
+  // Auto-run checks when status becomes "checking"
+  useEffect(() => {
+    if (networkStatus === "checking") {
+      const t1 = setTimeout(() => setNetworkStatus("success"), 1500)
+      return () => clearTimeout(t1)
+    }
+  }, [networkStatus])
+
+  useEffect(() => {
+    if (cameraStatus === "checking") {
+      const t2 = setTimeout(() => setCameraStatus("success"), 2500)
+      return () => clearTimeout(t2)
+    }
+  }, [cameraStatus])
+
+  // Trigger initial checks on mount
+  useEffect(() => {
+    setNetworkStatus("checking")
+    setCameraStatus("checking")
   }, [])
 
   const runMicTest = () => {
@@ -445,9 +478,18 @@ export function WaitingRoomScreen() {
       return
     }
     setMicStatus("checking")
-    window.setTimeout(() => {
-      setMicStatus("success")
-    }, 5000)
+    
+    // Simulate audio visualizer
+    let ticks = 0
+    const interval = setInterval(() => {
+      ticks++
+      setAudioLevel(Array.from({length: 5}, () => Math.floor(Math.random() * 80) + 10))
+      if (ticks > 25) {
+        clearInterval(interval)
+        setAudioLevel([10, 10, 10, 10, 10])
+        setMicStatus("success")
+      }
+    }, 150)
   }
 
   const acceptConsent = () => {
@@ -456,68 +498,206 @@ export function WaitingRoomScreen() {
     setConsentOpen(false)
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-        <Card className="rounded-lg p-6 shadow-sm">
-          <h1 className="text-2xl font-bold text-foreground">Waiting Room & Technical Check</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Complete the checklist before joining the voice AI interview.</p>
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {[
-              ["Browser permission", ShieldCheck],
-              ["Camera access", Camera],
-              ["Microphone access", Mic],
-              ["Quiet environment", Headphones],
-              ["Stable internet", Wifi],
-            ].map(([label, Icon]) => {
-              const TypedIcon = Icon as typeof ShieldCheck
-              return (
-                <div key={String(label)} className="flex items-center gap-3 rounded-lg border bg-slate-50 p-4">
-                  <TypedIcon className="h-5 w-5 text-[#0033A0]" />
-                  <span className="text-sm font-medium text-foreground">{String(label)}</span>
-                  <CheckCircle2 className="ml-auto h-4 w-4 text-emerald-600" />
-                </div>
-              )
-            })}
-          </div>
+  const isAllPassed = consentGranted && networkStatus === "success" && cameraStatus === "success" && micStatus === "success"
 
-          <div className="mt-6 rounded-lg border p-4">
-            <div className="mb-4 rounded-lg border bg-slate-50 p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+  return (
+    <div className="min-h-screen bg-slate-50 font-[var(--font-inter)]">
+      {/* Header Branding */}
+      <header className="border-b border-slate-200 bg-white shadow-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-3">
+            <img alt="SHB Logo" src="/Logo-SHB-EN.png" className="h-8 w-auto object-contain bg-transparent" />
+            <div className="h-6 w-px bg-slate-200"></div>
+            <h1 className="font-semibold text-slate-800 font-[var(--font-be-vietnam-pro)]">HireTrain AI Platform</h1>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
+          
+          {/* Left Column: Context & Identity */}
+          <section className="space-y-6">
+            <Card className="overflow-hidden rounded-xl border-slate-200 shadow-sm">
+              <div className="bg-[#004C97] p-6 text-white">
+                <p className="text-sm text-blue-100 mb-1">Chuẩn bị phỏng vấn</p>
+                <h2 className="text-2xl font-bold font-[var(--font-be-vietnam-pro)]">Xin chào, {candidateEmail.split("@")[0]} 👋</h2>
+              </div>
+              <div className="p-6 space-y-5 bg-white">
                 <div>
-                  <p className="font-semibold text-foreground">Voice recording consent</p>
-                  <p className="text-sm text-muted-foreground">Microphone checks and interview recording stay locked until consent is granted.</p>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Vị trí ứng tuyển</p>
+                  <p className="font-medium text-slate-800 flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-[#F37021]" /> Frontend Developer (Senior)
+                  </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <StatusPill tone={consentGranted ? "green" : "orange"}>{consentGranted ? "Consented" : "Required"}</StatusPill>
-                  <Button variant="outline" onClick={() => setConsentOpen(true)}>
-                    Review
-                  </Button>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Hình thức</p>
+                  <p className="font-medium text-slate-800 flex items-center gap-2">
+                    <Headphones className="h-4 w-4 text-[#F37021]" /> Phỏng vấn bằng giọng nói (Voice AI)
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Thời lượng dự kiến</p>
+                  <p className="font-medium text-slate-800 flex items-center gap-2">
+                    <Timer className="h-4 w-4 text-[#F37021]" /> 30 Phút
+                  </p>
+                </div>
+                <div className="pt-4 border-t border-slate-100">
+                  <p className="text-sm text-slate-600">
+                    Vui lòng hoàn thành bài kiểm tra kỹ thuật bên cạnh trước khi có thể bắt đầu phiên phỏng vấn.
+                  </p>
                 </div>
               </div>
-            </div>
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="font-semibold text-foreground">Mic test</p>
-                <p className="text-sm text-muted-foreground">Mock check runs for 5 seconds.</p>
+            </Card>
+
+            <Card className="rounded-xl border-[#F37021]/30 bg-[#F37021]/5 p-5">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="h-6 w-6 text-[#F37021] shrink-0" />
+                <div>
+                  <p className="font-semibold text-slate-900">Bảo mật thông tin</p>
+                  <p className="mt-1 text-xs text-slate-600">Hình ảnh và âm thanh của bạn được mã hóa 2 chiều và chỉ lưu trữ nhằm mục đích tuyển dụng.</p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <StatusPill tone={micStatus === "success" ? "green" : micStatus === "failed" ? "red" : micStatus === "checking" ? "orange" : "slate"}>
-                  {micStatus === "idle" ? "Not started" : micStatus}
-                </StatusPill>
-                <Button variant="outline" onClick={runMicTest} disabled={micStatus === "checking" || !consentGranted}>
-                  {micStatus === "checking" ? "Checking..." : "Run Mic Test"}
+            </Card>
+          </section>
+
+          {/* Right Column: Technical Prep */}
+          <section className="space-y-6">
+            <Card className="rounded-xl border-slate-200 p-6 shadow-sm bg-white">
+              <h2 className="text-xl font-bold text-slate-900 mb-6 font-[var(--font-be-vietnam-pro)]">Kiểm tra Kỹ thuật & Thiết bị</h2>
+              
+              <div className="grid gap-6 md:grid-cols-2 mb-6">
+                {/* Camera Preview */}
+                <div>
+                  <p className="font-semibold text-slate-800 mb-3 text-sm">1. Camera Preview</p>
+                  <div className="relative aspect-video rounded-lg bg-slate-900 overflow-hidden flex items-center justify-center border border-slate-200 shadow-inner">
+                    {cameraStatus === "success" ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        {/* Mock user face outline */}
+                        <div className="h-24 w-20 border-2 border-emerald-400 border-dashed rounded-[40%] opacity-50 relative">
+                          <div className="absolute inset-0 border-t-2 border-emerald-400 rounded-t-[40%] animate-pulse"></div>
+                        </div>
+                        <p className="text-emerald-400 text-xs mt-3 font-mono">Camera Active</p>
+                      </div>
+                    ) : cameraStatus === "checking" ? (
+                      <div className="text-slate-400 flex flex-col items-center">
+                        <Camera className="h-8 w-8 mb-2 animate-pulse" />
+                        <span className="text-xs font-mono">Connecting...</span>
+                      </div>
+                    ) : (
+                      <div className="text-slate-500 flex flex-col items-center">
+                        <Camera className="h-8 w-8 mb-2" />
+                        <span className="text-xs font-mono">Camera Off</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mic Visualizer */}
+                <div>
+                  <p className="font-semibold text-slate-800 mb-3 text-sm">2. Microphone & Tiếng ồn</p>
+                  <div className="relative aspect-video rounded-lg bg-slate-50 flex flex-col items-center justify-center border border-slate-200">
+                    <div className="flex items-end gap-1.5 h-16 mb-4">
+                      {audioLevel.map((height, i) => (
+                        <div 
+                          key={i} 
+                          className={cn("w-3 rounded-t-sm transition-all duration-100 ease-in", micStatus === "checking" ? "bg-[#004C97]" : "bg-slate-300")}
+                          style={{ height: `${height}%` }}
+                        />
+                      ))}
+                    </div>
+                    {micStatus === "success" ? (
+                      <p className="text-emerald-600 text-xs font-medium flex items-center gap-1"><CheckCircle2 className="h-3 w-3"/> Âm thanh rõ, không có ồn</p>
+                    ) : micStatus === "checking" ? (
+                      <p className="text-[#004C97] text-xs font-medium animate-pulse">Vui lòng nói "Alo, 1 2 3"...</p>
+                    ) : (
+                      <p className="text-slate-500 text-xs">Nhấn nút bên dưới để thử Mic</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Checklist */}
+              <div className="space-y-4 mb-8">
+                {/* Network */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50">
+                  <div className="flex items-center gap-3">
+                    <Wifi className={cn("h-5 w-5", networkStatus === "success" ? "text-emerald-600" : "text-slate-400")} />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Kết nối mạng</p>
+                      <p className="text-xs text-slate-500">Ping & băng thông</p>
+                    </div>
+                  </div>
+                  <div>
+                    {networkStatus === "success" ? (
+                      <StatusPill tone="green">Ổn định</StatusPill>
+                    ) : networkStatus === "checking" ? (
+                      <StatusPill tone="orange">Đang kiểm tra...</StatusPill>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setNetworkStatus("checking")}>Thử lại</Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Camera */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50">
+                  <div className="flex items-center gap-3">
+                    <Camera className={cn("h-5 w-5", cameraStatus === "success" ? "text-emerald-600" : "text-slate-400")} />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Truy cập Camera</p>
+                      <p className="text-xs text-slate-500">Ghi hình chống gian lận</p>
+                    </div>
+                  </div>
+                  <div>
+                    {cameraStatus === "success" ? (
+                      <StatusPill tone="green">Đã kết nối</StatusPill>
+                    ) : cameraStatus === "checking" ? (
+                      <StatusPill tone="orange">Đang kết nối...</StatusPill>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setCameraStatus("checking")}>Thử lại</Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Microphone */}
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50">
+                  <div className="flex items-center gap-3">
+                    <Mic className={cn("h-5 w-5", micStatus === "success" ? "text-emerald-600" : "text-slate-400")} />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Microphone & Tiếng ồn</p>
+                      <p className="text-xs text-slate-500">Đảm bảo AI nghe rõ giọng bạn</p>
+                    </div>
+                  </div>
+                  <div>
+                    {micStatus === "success" ? (
+                      <StatusPill tone="green">Hoàn hảo</StatusPill>
+                    ) : micStatus === "checking" ? (
+                      <StatusPill tone="orange">Đang nghe...</StatusPill>
+                    ) : (
+                      <Button variant="outline" size="sm" className="bg-white border-[#004C97] text-[#004C97] hover:bg-blue-50" onClick={runMicTest}>Kiểm tra Mic</Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions & Error Handling */}
+              <div className="flex flex-col-reverse md:flex-row items-center justify-between gap-4 pt-6 border-t border-slate-100">
+                <a href="#" className="text-sm font-medium text-[#004C97] hover:underline flex items-center gap-1">
+                  <AlertTriangle className="h-4 w-4" /> Gặp sự cố? Xem hướng dẫn
+                </a>
+                <Button 
+                  className="w-full md:w-auto bg-[#004C97] px-8 text-white hover:bg-[#003875] transition-all disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                  disabled={!isAllPassed} 
+                  onClick={() => router.push(`/candidate/interview/${interviewToken}/room`)}
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Bắt đầu Phỏng vấn
                 </Button>
               </div>
-            </div>
-          </div>
 
-          <div className="mt-6 flex justify-end">
-            <Button className="bg-[#0033A0] text-white hover:bg-[#00256f]" disabled={!consentGranted || micStatus !== "success"} onClick={() => router.push(`/candidate/interview/${interviewToken}/room`)}>
-              Start Interview
-            </Button>
-          </div>
-        </Card>
+            </Card>
+          </section>
+        </div>
       </main>
       <VoiceConsentModal open={consentOpen} onOpenChange={setConsentOpen} onConsent={acceptConsent} />
     </div>
