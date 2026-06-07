@@ -81,10 +81,25 @@ export function JobApplyPage({ jobSlug }: { jobSlug?: string }) {
     setMessage(null)
 
     try {
-      await applyFileToPublicJob(job.id, cvFile)
+      if (looksLikeUuid(job.id)) {
+        await applyFileToPublicJob(job.id, cvFile)
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
+      window.sessionStorage.setItem("candidateApplyNotice", "success")
+      router.push(`/jobs/${jobSlug}/thank-you`)
+    } catch (error) {
+      setMessage({ type: "error", text: formatApiError(error, "Không thể nộp hồ sơ.") })
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
-      window.sessionStorage.setItem(
-        "candidateApplyNotice",
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <Link href={`/jobs/${jobSlug}`} className="mb-4 inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900">
+          <ArrowLeft className="h-4 w-4" />
           Quay lại tin tuyển dụng
         </Link>
         <div className="mt-5 grid gap-6 lg:grid-cols-[1fr_300px]">

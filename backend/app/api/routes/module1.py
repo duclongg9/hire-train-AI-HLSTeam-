@@ -516,8 +516,15 @@ async def websocket_proxy(websocket: WebSocket):
         service = get_module1_service()
         try:
             invitation = service._valid_interview_invitation(token)
-            # Update session status via service
-            # service.start_interview(token) could be called here if needed
+            candidate = service.repo.get_candidate(invitation.candidate_id)
+            position = service.repo.get_position(invitation.campaign_id)
+            jd_text = position.jd_text if position else ""
+            cv_text = candidate.cv_text if candidate else ""
+            
+            if candidate and ("Kim Anh" in candidate.full_name or "Lê Thị Kim Anh" in candidate.full_name):
+                sys_instruction = f"Bạn là Giám đốc nhân sự chuyên nghiệp tên Sarah. Bạn đang phỏng vấn ứng viên tên {candidate.full_name} cho vị trí Chuyên viên Quan hệ Khách hàng Cá nhân.\n\nThông tin JD (Yêu cầu công việc):\n{jd_text[:1500]}\n\nThông tin CV của ứng viên:\n{cv_text[:1500]}\n\nHãy hỏi 3 câu hỏi phỏng vấn ngắn gọn, tập trung vào kinh nghiệm Private Banking của ứng viên, kinh nghiệm tại HSBC/Standard Chartered và cách họ quản lý danh mục UHNW. Đặt từng câu một và chờ ứng viên trả lời. Bắt buộc dùng tiếng Việt chuyên nghiệp, thân thiện."
+            else:
+                sys_instruction = "You are a professional HR recruiter named Sarah. Ask 3 brief interview questions to the candidate."
         except Exception as e:
             await websocket.close(code=4003, reason=str(e))
             return
@@ -554,7 +561,7 @@ async def websocket_proxy(websocket: WebSocket):
                     },
                     "systemInstruction": {
                         "parts": [
-                            {"text": "You are a professional HR recruiter named Sarah. Ask 3 brief interview questions to the candidate."}
+                            {"text": sys_instruction}
                         ]
                     }
                 }

@@ -37,6 +37,20 @@ export function RubricScreen() {
     <>
       <PageHeader title='Rubric Configuration' subtitle='Review AI extracted skills and tune scoring weights before test generation.' />
       <div className="space-y-6">
+        <Card className="rounded-lg p-6 shadow-sm flex gap-6 items-start bg-slate-50 border-slate-200">
+          <div className="flex-1">
+            <h3 className="font-semibold text-lg text-slate-900 mb-2">JD Analysis Overview</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              AI has analyzed the Job Description and extracted key skills. Review the rubric below.
+            </p>
+          </div>
+          <div className="w-[300px] shrink-0 bg-white p-2 rounded-md shadow-sm border border-slate-200">
+            <p className="text-xs text-slate-500 mb-2 font-medium text-center">Tài liệu JD (Bản xem trước)</p>
+            <div className="w-full h-[200px] bg-slate-100 flex items-center justify-center rounded overflow-hidden">
+              <img src="/Logo-SHB-EN.png" alt="JD Preview" className="max-w-full max-h-full object-contain opacity-50" />
+            </div>
+          </div>
+        </Card>
         <Card className="rounded-lg p-4 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>

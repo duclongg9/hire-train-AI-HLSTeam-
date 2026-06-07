@@ -789,17 +789,19 @@ export default function AssessmentPage() {
               <AlertDialogTitle className="text-2xl font-bold font-[var(--font-be-vietnam-pro)] text-slate-800">
                 Xác nhận nộp bài
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-base text-slate-600 pt-2">
-                {answeredCount < totalQuestions 
-                  ? <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-700 font-medium mb-4">
-                      CẢNH BÁO: Bạn vẫn còn <strong>{totalQuestions - answeredCount} câu chưa trả lời.</strong>
-                    </div> 
-                  : <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-700 font-medium mb-4">
-                      Tuyệt vời! Bạn đã hoàn thành tất cả câu hỏi.
-                    </div>
-                }
-                Thời gian vẫn còn <strong>{formatTime(store.timeLeft)}</strong>. 
-                Sau khi xác nhận nộp bài, bạn sẽ <strong>KHÔNG</strong> thể quay lại thay đổi đáp án.
+              <AlertDialogDescription asChild>
+                <div className="text-base text-slate-600 pt-2">
+                  {answeredCount < totalQuestions 
+                    ? <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-700 font-medium mb-4">
+                        CẢNH BÁO: Bạn vẫn còn <strong>{totalQuestions - answeredCount} câu chưa trả lời.</strong>
+                      </div> 
+                    : <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-700 font-medium mb-4">
+                        Tuyệt vời! Bạn đã hoàn thành tất cả câu hỏi.
+                      </div>
+                  }
+                  Thời gian vẫn còn <strong>{formatTime(store.timeLeft)}</strong>. 
+                  Sau khi xác nhận nộp bài, bạn sẽ <strong>KHÔNG</strong> thể quay lại thay đổi đáp án.
+                </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="mt-6 gap-3 sm:gap-0">
