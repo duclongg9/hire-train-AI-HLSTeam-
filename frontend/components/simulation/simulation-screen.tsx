@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import {
+  AlertTriangle,
   Bot,
   CheckCircle2,
   Clock,
@@ -24,6 +25,46 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+
+const ShbLogo = () => (
+  <svg width="100%" height="100%" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <rect x="10" y="10" width="180" height="180" rx="30" fill="url(#bg-gradient)" stroke="#000" strokeWidth="8"/>
+    <defs>
+      <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style={{stopColor: "#f89728", stopOpacity: 1}} />
+        <stop offset="100%" style={{stopColor: "#df6815", stopOpacity: 1}} />
+      </linearGradient>
+    </defs>
+    <g stroke="#000" strokeWidth="1.5" fill="none" strokeLinejoin="round">
+      <path d="M 60 100 Q 40 60 100 50 Q 160 60 140 100 Q 145 130 115 145 Q 100 165 95 140 Q 60 135 60 100 Z" />
+      <path d="M 100 50 L 100 140" strokeDasharray="2,2"/>
+      <circle cx="60" cy="100" r="2.5" fill="#000"/>
+      <circle cx="100" cy="50" r="2.5" fill="#000"/>
+      <circle cx="140" cy="100" r="2.5" fill="#000"/>
+      <circle cx="115" cy="145" r="2.5" fill="#000"/>
+      <circle cx="95" cy="140" r="2.5" fill="#000"/>
+      <circle cx="80" cy="75" r="2.5" fill="#000"/>
+      <circle cx="120" cy="75" r="2.5" fill="#000"/>
+      <line x1="60" y1="100" x2="80" y2="75" />
+      <line x1="80" y1="75" x2="100" y2="50" />
+      <line x1="100" y1="50" x2="120" y2="75" />
+      <line x1="120" y1="75" x2="140" y2="100" />
+      <line x1="140" y1="100" x2="115" y2="145" />
+      <line x1="80" y1="75" x2="95" y2="140" />
+      <line x1="120" y1="75" x2="95" y2="140" />
+    </g>
+    <g fontFamily="Arial, sans-serif" fontWeight="bold" fill="#000">
+      <text x="65" y="110" fontSize="28">S</text>
+      <text x="90" y="110" fontSize="28">H</text>
+      <text x="115" y="110" fontSize="28">B</text>
+      <rect x="91" y="65" width="16" height="12" fill="none" stroke="#000" strokeWidth="1"/>
+      <text x="93" y="75" fontSize="8">AI</text>
+      <circle cx="140" cy="100" r="9" fill="none" stroke="#000" strokeWidth="1.5"/>
+      <text x="134" y="103" fontSize="8">HR</text>
+    </g>
+    <text x="100" y="165" fontFamily="Arial, sans-serif" fontSize="12" fontWeight="bold" fill="#000" textAnchor="middle">Ngân Hàng SHB AI HR</text>
+  </svg>
+)
 
 interface SimulationScreenProps {
   interviewToken?: string
@@ -200,6 +241,7 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
   const [reviewTranscript, setReviewTranscript] = useState("")
   const [answers, setAnswers] = useState<AnswerRecord[]>([])
   const [recognitionStatus, setRecognitionStatus] = useState("Đang chuẩn bị phiên phỏng vấn")
+  const [showErrorModal, setShowErrorModal] = useState(false)
 
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -221,6 +263,29 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
   useEffect(() => {
     liveTranscriptRef.current = liveTranscript
   }, [liveTranscript])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showErrorModal) return
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return
+      
+      if (e.code === 'Space' || e.key === 'Enter') {
+        e.preventDefault()
+        if (phase === "recording") {
+          finishRecordingRef.current()
+        } else if (phase === "ready" || phase === "speaking") {
+          // We can't easily call beginRecording here because it's defined later, 
+          // but we can trigger it via a hidden button or by dispatching an event, or better:
+          // Just expose beginRecording in a ref later or move beginRecording definition up.
+          // For now, let's just trigger click on the mic button if we set a specific ID on it.
+          document.getElementById('mic-toggle-btn')?.click()
+        }
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [phase, showErrorModal])
 
   useEffect(() => {
     return () => {
@@ -443,7 +508,11 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
     } catch {
       setRecognitionStatus("Không mở được microphone, dùng transcript mock")
       setVoiceVolume(0.18)
-      startFallbackTranscript()
+      setShowErrorModal(true)
+      if (elapsedTimerRef.current) {
+        window.clearInterval(elapsedTimerRef.current)
+        elapsedTimerRef.current = null
+      }
     }
   }
 
@@ -537,50 +606,87 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
   }
 
   return (
-    <main className="min-h-svh overflow-hidden bg-[#f6f8fb] text-slate-950">
-      <header className="flex min-h-20 flex-col gap-3 border-b border-slate-200 bg-white/90 px-5 py-4 backdrop-blur md:flex-row md:items-center md:justify-between md:px-8">
+    <main className="min-h-svh overflow-hidden bg-[#F8F9FA] text-[#003B5C]">
+      {showErrorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-8 w-8 text-red-600" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-[#003B5C]">Không thể truy cập Microphone</h3>
+              <p className="mb-6 text-sm text-slate-500">
+                Hệ thống không thể mở microphone của bạn. Vui lòng cấp quyền truy cập microphone trong cài đặt trình duyệt để tiếp tục phần phỏng vấn.
+              </p>
+              <div className="flex w-full gap-3">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setShowErrorModal(false)
+                    startFallbackTranscript()
+                  }}
+                >
+                  Dùng mock data
+                </Button>
+                <Button
+                  className="w-full bg-[#F37021] text-white hover:bg-[#df6815]"
+                  onClick={() => {
+                    setShowErrorModal(false)
+                    beginRecording()
+                  }}
+                >
+                  Thử lại
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <header className="flex min-h-20 flex-col gap-3 bg-white px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between md:px-8 relative z-20">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-950 text-white">
-            <Sparkles className="h-5 w-5" />
+          <div className="flex h-10 w-10 overflow-hidden items-center justify-center rounded-lg bg-slate-100 p-1">
+            <ShbLogo />
           </div>
           <div>
-            <p className="text-base font-semibold leading-tight">HireTrain AI</p>
-            <p className="text-xs text-slate-500">Audio interview room</p>
+            <p className="text-base font-bold leading-tight text-[#003B5C]">Tuyển dụng SHB</p>
+            <p className="text-xs font-medium text-slate-500">Phòng phỏng vấn AI</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2">
-            <FileText className="h-3.5 w-3.5 text-slate-500" />
-            Câu {questionIndex + 1}/{interviewQuestions.length}
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2">
-            <CheckCircle2 className="h-3.5 w-3.5 text-slate-500" />
-            {progressValue}% hoàn tất
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
-            <Wifi className="h-3.5 w-3.5" />
+          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-700 shadow-sm">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            </span>
             Network ổn định
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-700">
-            <Signal className="h-3.5 w-3.5" />
+          <span className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1.5 shadow-sm", isRecording ? "border-[#F37021]/30 bg-[#F37021]/10 text-[#F37021]" : "border-blue-200 bg-blue-50 text-blue-700")}>
+            <span className="relative flex h-2 w-2">
+              <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", isRecording ? "bg-[#F37021]" : "bg-blue-400")}></span>
+              <span className={cn("relative inline-flex h-2 w-2 rounded-full", isRecording ? "bg-[#F37021]" : "bg-blue-500")}></span>
+            </span>
             Mic {isRecording ? "đang thu" : "sẵn sàng"}
           </span>
         </div>
       </header>
+      <div className="h-1 w-full bg-slate-100">
+        <div className="h-full bg-[#F37021] transition-all duration-500" style={{ width: `${progressValue}%` }} />
+      </div>
 
-      <section className="grid min-h-[calc(100svh-5rem)] lg:grid-cols-2">
-        <section className="flex min-h-[48svh] flex-col justify-between border-b border-slate-200 bg-white px-5 py-6 lg:min-h-0 lg:border-b-0 lg:border-r lg:px-8">
+      <section className="flex flex-col lg:grid lg:min-h-[calc(100svh-5.25rem)] lg:grid-cols-[40%_60%]">
+        <section className="sticky top-0 z-10 flex flex-col justify-between border-b border-slate-200 bg-white px-5 py-6 shadow-sm lg:relative lg:border-b-0 lg:border-r lg:px-8 lg:shadow-none">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">AI Interviewer</p>
-              <h1 className="mt-2 text-2xl font-semibold text-slate-950 md:text-3xl">Phỏng vấn âm thanh</h1>
+              <h1 className="mt-2 text-2xl font-bold text-[#003B5C] md:text-3xl">Phỏng vấn âm thanh</h1>
             </div>
             <span
               className={cn(
                 "inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold",
                 phase === "speaking" && "bg-blue-50 text-blue-700",
-                phase === "recording" && "bg-emerald-50 text-emerald-700",
+                phase === "recording" && "bg-[#F37021]/10 text-[#F37021]",
                 phase === "processing" && "bg-amber-50 text-amber-700",
                 phase === "review" && "bg-slate-100 text-slate-700",
                 phase === "ready" && "bg-slate-100 text-slate-700",
@@ -591,26 +697,26 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
             </span>
           </div>
 
-          <div className="flex flex-1 flex-col items-center justify-center py-10">
+          <div className="flex flex-1 flex-col items-center justify-center py-6 lg:py-10">
             <motion.div
-              className="relative flex h-56 w-56 items-center justify-center rounded-full border border-white bg-[radial-gradient(circle_at_32%_26%,#ffffff_0,#ffffff_18%,#dbeafe_36%,#99f6e4_58%,#fde68a_78%,#fecdd3_100%)] shadow-[0_28px_80px_rgba(15,23,42,0.18)]"
+              className="relative flex h-48 w-48 items-center justify-center overflow-hidden rounded-full shadow-[0_12px_40px_rgba(243,112,33,0.15)]"
               animate={{
-                scale: phase === "speaking" ? [1, 1.04, 1] : [1, 1.015, 1],
+                scale: phase === "speaking" ? [1, 1.05, 1] : [1, 1.02, 1],
               }}
-              transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
             >
-              <motion.div
-                className="absolute inset-8 rounded-full bg-white/45 blur-md"
-                animate={{ opacity: [0.42, 0.72, 0.42] }}
-                transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-              />
-              <Bot className="relative h-16 w-16 text-slate-950" />
+              <ShbLogo />
             </motion.div>
 
-            <div className="mt-8 max-w-2xl rounded-lg border border-slate-200 bg-slate-50 p-5 shadow-sm">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                <Volume2 className="h-4 w-4" />
-                AI question
+            <div className="mt-8 w-full max-w-2xl rounded-xl border-t-4 border-t-[#F37021] border-x border-b border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  <Volume2 className="h-4 w-4" />
+                  Câu hỏi AI
+                </div>
+                <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                  {currentQuestion.competency}
+                </span>
               </div>
               <AnimatePresence mode="wait">
                 <motion.p
@@ -618,7 +724,7 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="mt-4 text-xl font-semibold leading-8 text-slate-950 md:text-2xl"
+                  className="mt-4 text-xl font-bold leading-8 text-[#003B5C] md:text-2xl"
                 >
                   {currentQuestion.prompt}
                 </motion.p>
@@ -626,18 +732,14 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
             </div>
           </div>
 
-          <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 sm:grid-cols-3">
+          <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm sm:grid-cols-2">
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Năng lực</p>
-              <p className="mt-1 font-medium text-slate-900">{currentQuestion.competency}</p>
+              <p className="text-xs font-semibold uppercase text-slate-400">Thời lượng trả lời</p>
+              <p className="mt-1 font-bold text-[#003B5C]">{formatTime(targetSeconds)}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Thời lượng</p>
-              <p className="mt-1 font-medium text-slate-900">{formatTime(targetSeconds)}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Bảo mật</p>
-              <p className="mt-1 inline-flex items-center gap-1.5 font-medium text-slate-900">
+              <p className="text-xs font-semibold uppercase text-slate-400">Trạng thái bảo mật</p>
+              <p className="mt-1 inline-flex items-center gap-1.5 font-bold text-[#003B5C]">
                 <ShieldCheck className="h-4 w-4 text-emerald-600" />
                 Token {interviewToken ? "đã sẵn sàng" : "demo"}
               </p>
@@ -645,44 +747,51 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
           </div>
         </section>
 
-        <section className="flex min-h-[52svh] flex-col bg-[#f6f8fb] px-5 py-6 lg:min-h-0 lg:px-8">
-          <div className="space-y-4">
+        <section className="flex flex-col bg-[#F8F9FA] px-5 py-6 lg:px-8">
+          <div className="space-y-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Candidate workspace</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-950">Ghi âm và transcript</h2>
+                <h2 className="mt-2 text-2xl font-bold text-[#003B5C]">Ghi âm và transcript</h2>
               </div>
-              <div className="rounded-lg bg-white px-4 py-3 text-right shadow-sm">
+              <div className="rounded-xl bg-white px-5 py-3 text-right shadow-sm border border-slate-100">
                 <p className="text-xs font-semibold uppercase text-slate-400">Timer</p>
-                <p className={cn("mt-1 font-mono text-xl font-semibold", remainingSeconds <= 20 ? "text-red-600" : "text-slate-950")}>
+                <p className={cn("mt-1 font-mono text-xl font-bold", remainingSeconds <= 30 ? "text-[#F37021]" : "text-[#003B5C]")}>
                   {formatTime(elapsedSeconds)} / {formatTime(targetSeconds)}
                 </p>
               </div>
             </div>
 
-            <Progress value={(elapsedSeconds / targetSeconds) * 100} className="h-2 bg-slate-200 [&>div]:bg-emerald-500" />
+            <Progress value={(elapsedSeconds / targetSeconds) * 100} className="h-2.5 bg-slate-200 [&>div]:bg-[#F37021]" />
 
             <AudioVisualizer active={isRecording} volume={voiceVolume} />
 
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Live transcript</p>
-                  <p className="mt-1 text-sm text-slate-500">{recognitionStatus}</p>
+                  <p className="mt-1 text-sm font-medium text-slate-500">{recognitionStatus}</p>
                 </div>
-                <span className={cn("h-2.5 w-2.5 rounded-full", isRecording ? "bg-emerald-500" : "bg-slate-300")} />
+                <span className={cn("h-3 w-3 rounded-full shadow-sm", isRecording ? "bg-[#F37021] animate-pulse" : "bg-slate-300")} />
               </div>
 
               {phase === "review" ? (
                 <Textarea
                   value={reviewTranscript}
                   onChange={(event) => setReviewTranscript(event.target.value)}
-                  className="mt-4 min-h-40 resize-none border-slate-200 text-base leading-7"
+                  className="mt-4 min-h-40 resize-none border-slate-200 text-base leading-7 focus-visible:ring-[#F37021]"
                 />
+              ) : phase === "processing" ? (
+                <div className="mt-4 min-h-40 space-y-4 rounded-xl border border-slate-100 bg-slate-50 p-5 shadow-inner">
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-slate-200"></div>
+                  <div className="h-4 w-full animate-pulse rounded bg-slate-200"></div>
+                  <div className="h-4 w-5/6 animate-pulse rounded bg-slate-200"></div>
+                  <div className="h-4 w-2/3 animate-pulse rounded bg-slate-200"></div>
+                </div>
               ) : (
-                <div className="mt-4 min-h-40 rounded-lg border border-slate-100 bg-slate-50 p-4 text-base leading-7 text-slate-700">
+                <div className="mt-4 min-h-40 rounded-xl border border-slate-100 bg-slate-50 p-5 text-base leading-7 text-slate-700 shadow-inner">
                   {liveTranscript ? (
-                    liveTranscript
+                    <span className="animate-in fade-in">{liveTranscript}</span>
                   ) : (
                     <span className="text-slate-400">
                       {phase === "recording" ? "Micro đang mở. Transcript sẽ xuất hiện tại đây..." : "Bấm bắt đầu trả lời để ghi âm câu này."}
@@ -694,63 +803,69 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
           </div>
 
           <div className="mt-auto pt-6">
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={isRecording ? finishRecording : beginRecording}
-                    disabled={phase === "processing" || phase === "review"}
-                    className={cn(
-                      "flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition",
-                      isRecording ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700",
-                      (phase === "processing" || phase === "review") && "cursor-not-allowed bg-slate-300",
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="relative flex items-center justify-center">
+                    {isRecording && (
+                      <span className="absolute inline-flex h-20 w-20 animate-ping rounded-full bg-[#F37021] opacity-20"></span>
                     )}
-                    aria-label={isRecording ? "Dừng ghi âm" : "Bắt đầu ghi âm"}
-                  >
-                    {isRecording ? <Square className="h-6 w-6 fill-current" /> : <Mic className="h-6 w-6" />}
-                  </button>
+                    <button
+                      id="mic-toggle-btn"
+                      type="button"
+                      onClick={isRecording ? finishRecording : beginRecording}
+                      disabled={phase === "processing" || phase === "review"}
+                      className={cn(
+                        "relative flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-white shadow-md transition-all hover:scale-105 active:scale-95",
+                        isRecording ? "bg-red-600 hover:bg-red-700" : "bg-[#F37021] hover:bg-[#df6815]",
+                        (phase === "processing" || phase === "review") && "cursor-not-allowed bg-slate-300 hover:scale-100",
+                      )}
+                      aria-label={isRecording ? "Dừng ghi âm" : "Bắt đầu ghi âm"}
+                    >
+                      {isRecording ? <Square className="h-7 w-7 fill-current" /> : <Mic className="h-7 w-7" />}
+                    </button>
+                  </div>
                   <div>
-                    <p className="font-semibold text-slate-950">
-                      {isRecording ? "Đang ghi âm" : phase === "review" ? "Kiểm tra transcript" : "Sẵn sàng trả lời"}
+                    <p className="text-lg font-bold text-[#003B5C]">
+                      {isRecording ? "Đang ghi âm..." : phase === "review" ? "Kiểm tra transcript" : "Sẵn sàng trả lời"}
                     </p>
-                    <p className="text-sm text-slate-500">
-                      {isRecording ? "Sóng âm đang phản hồi theo microphone." : "AI sẽ lưu transcript sau khi bạn xác nhận."}
+                    <p className="text-sm font-medium text-slate-500">
+                      {isRecording ? "Sóng âm đang phản hồi theo microphone." : "Bấm phím Space hoặc Enter để bắt đầu."}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={replayQuestion} disabled={phase === "recording" || phase === "processing"}>
+                  <Button variant="ghost" className="border-slate-200 font-semibold" onClick={replayQuestion} disabled={phase === "recording" || phase === "processing"}>
                     <Play className="mr-2 h-4 w-4" />
                     Nghe lại
                   </Button>
                   {phase === "recording" ? (
-                    <Button className="bg-slate-950 text-white hover:bg-slate-800" onClick={finishRecording}>
+                    <Button className="bg-[#003B5C] font-semibold text-white shadow-sm hover:bg-blue-900" onClick={finishRecording}>
                       <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Hoàn thành câu trả lời
+                      Hoàn thành
                     </Button>
                   ) : null}
                   {phase === "review" ? (
                     <>
-                      <Button variant="outline" onClick={retryAnswer}>
+                      <Button variant="ghost" className="font-semibold" onClick={retryAnswer}>
                         <RotateCcw className="mr-2 h-4 w-4" />
                         Ghi âm lại
                       </Button>
-                      <Button className="bg-slate-950 text-white hover:bg-slate-800" onClick={confirmAnswer}>
+                      <Button className="bg-[#003B5C] font-semibold text-white shadow-sm hover:bg-blue-900" onClick={confirmAnswer}>
                         <CheckCircle2 className="mr-2 h-4 w-4" />
                         {isLastQuestion ? "Xác nhận và kết thúc" : "Xác nhận câu này"}
                       </Button>
                     </>
                   ) : null}
                   {phase === "ready" || phase === "speaking" ? (
-                    <Button className="bg-slate-950 text-white hover:bg-slate-800" onClick={beginRecording}>
+                    <Button className="bg-[#003B5C] font-semibold text-white shadow-sm hover:bg-blue-900" onClick={beginRecording}>
                       <Mic className="mr-2 h-4 w-4" />
                       Bắt đầu trả lời
                     </Button>
                   ) : null}
                   {phase === "processing" ? (
-                    <Button disabled>
+                    <Button disabled variant="outline" className="font-semibold">
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Đang xử lý
                     </Button>
