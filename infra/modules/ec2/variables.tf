@@ -14,6 +14,18 @@ variable "instance_type" {
   type        = string
 }
 
+variable "root_volume_size" {
+  description = "Root EBS volume size in GiB. Docker images need more than the small AMI default."
+  type        = number
+  default     = 30
+}
+
+variable "root_volume_type" {
+  description = "Root EBS volume type."
+  type        = string
+  default     = "gp3"
+}
+
 variable "subnet_id" {
   description = "ID of the subnet in which to launch the EC2 instance."
   type        = string

@@ -97,13 +97,15 @@ resource "aws_key_pair" "ec2_key_pair" {
 }
 
 module "frontend_ec2" {
-  source        = "./modules/ec2"
-  name          = "frontend"
-  ami_id        = local.ec2_ami_id
-  instance_type = var.frontend_instance_type
-  subnet_id     = module.vpc.public_subnet_id
-  vpc_id        = module.vpc.vpc_id
-  key_name      = aws_key_pair.ec2_key_pair.key_name
+  source           = "./modules/ec2"
+  name             = "frontend"
+  ami_id           = local.ec2_ami_id
+  instance_type    = var.frontend_instance_type
+  root_volume_size = var.ec2_root_volume_size
+  root_volume_type = var.ec2_root_volume_type
+  subnet_id        = module.vpc.public_subnet_id
+  vpc_id           = module.vpc.vpc_id
+  key_name         = aws_key_pair.ec2_key_pair.key_name
   user_data     = local.docker_user_data
   ingress_rules = [
     { from_port = 80, to_port = 80, protocol = "tcp", cidr_blocks = ["0.0.0.0/0"] },
@@ -115,13 +117,15 @@ module "frontend_ec2" {
 }
 
 module "backend_ec2" {
-  source        = "./modules/ec2"
-  name          = "backend"
-  ami_id        = local.ec2_ami_id
-  instance_type = var.backend_instance_type
-  subnet_id     = module.vpc.public_subnet_id
-  vpc_id        = module.vpc.vpc_id
-  key_name      = aws_key_pair.ec2_key_pair.key_name
+  source           = "./modules/ec2"
+  name             = "backend"
+  ami_id           = local.ec2_ami_id
+  instance_type    = var.backend_instance_type
+  root_volume_size = var.ec2_root_volume_size
+  root_volume_type = var.ec2_root_volume_type
+  subnet_id        = module.vpc.public_subnet_id
+  vpc_id           = module.vpc.vpc_id
+  key_name         = aws_key_pair.ec2_key_pair.key_name
   user_data     = local.docker_user_data
   ingress_rules = [
     { from_port = 8000, to_port = 8000, protocol = "tcp", source_security_group_id = module.frontend_ec2.security_group_id },

@@ -22,6 +22,18 @@ variable "availability_zone" {
 
 variable "backend_instance_type" { type = string }
 variable "frontend_instance_type" { type = string }
+variable "ec2_root_volume_size" {
+  description = "Root EBS volume size in GiB for frontend and backend EC2 instances."
+  type        = number
+  default     = 30
+}
+
+variable "ec2_root_volume_type" {
+  description = "Root EBS volume type for frontend and backend EC2 instances."
+  type        = string
+  default     = "gp3"
+}
+
 variable "ec2_ami_id" {
   description = "Ubuntu EC2 AMI ID. Leave empty to use the latest Ubuntu 22.04 AMI from AWS SSM."
   type        = string

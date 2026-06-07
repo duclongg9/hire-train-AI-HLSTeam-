@@ -49,7 +49,7 @@ def call_gemini(prompt: str, json_mode: bool = True, max_retries: int = 3) -> An
                     raise
 
 class GeminiProvider(AIProvider):
-    def analyze_jd(self, campaign_id: UUID, jd_text: str) -> list[RubricCriterion]:
+    def analyze_jd(self, position_id: UUID, jd_text: str) -> list[RubricCriterion]:
         prompt = f"""
 You are a senior HR specialist. Analyze the Job Description or Rubric Criteria document and extract a structured scoring rubric as JSON.
 If the text is a structured rubric criteria document, extract the exact criteria names, weights (must sum to 100), and descriptions as written.
@@ -70,7 +70,7 @@ Text:
                 cat_raw = item.get("category", "hard_skill")
                 category = RubricCategory(cat_raw) if cat_raw in RubricCategory._value2member_map_ else RubricCategory.hard_skill
                 criteria.append(RubricCriterion(
-                    campaign_id=campaign_id,
+                    position_id=position_id,
                     category=category,
                     name=item["name"],
                     weight=int(item.get("weight", 10)),
@@ -82,7 +82,7 @@ Text:
 
     def generate_test_questions(
         self,
-        campaign_id: UUID,
+        position_id: UUID,
         jd_text: str,
         rubric: list[RubricCriterion],
         count: int = 15,
@@ -108,7 +108,7 @@ Generate {count} questions.
         for idx, item in enumerate(result.get("questions", [])[:count], start=1):
             try:
                 questions.append(TestQuestion(
-                    campaign_id=campaign_id,
+                    position_id=position_id,
                     question_text=item["question_text"],
                     difficulty=item.get("difficulty", "medium"),
                     skill_tag=item.get("skill_tag", "general"),
@@ -127,7 +127,7 @@ Generate {count} questions.
         if not cv_text.strip():
             return CandidateScore(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                position_id=candidate.position_id,
                 score=0.0,
                 badge=CandidateBadge.GAP,
                 ai_reasoning="No CV text provided.",
@@ -161,7 +161,7 @@ RUBRIC:
         except Exception as e:
             return CandidateScore(
                 candidate_id=candidate.id,
-                campaign_id=candidate.campaign_id,
+                position_id=candidate.position_id,
                 score=0.0,
                 badge=CandidateBadge.GAP,
                 ai_reasoning=f"AI evaluation failed: {str(e)}",
@@ -188,7 +188,7 @@ RUBRIC:
 
         return CandidateScore(
             candidate_id=candidate.id,
-            campaign_id=candidate.campaign_id,
+            position_id=candidate.position_id,
             score=final_score_100,
             badge=badge,
             ai_reasoning=result.get("ai_reasoning", "Evaluated successfully."),
@@ -198,17 +198,24 @@ RUBRIC:
 
     def screen_interview(self, session: InterviewSession, chat_history: list[InterviewEvent]) -> InterviewReport:
         return InterviewReport(
-            session_id=session.id,
             candidate_id=session.candidate_id,
             campaign_id=session.campaign_id,
-            overall_score=80.0,
-            communication_score=85.0,
-            technical_score=75.0,
-            cultural_fit_score=80.0,
-            ai_summary="Mocked report (fallback).",
+            interview_session_id=session.id,
+            transcript=[
+                {"speaker": event.speaker, "text": event.text, "event_type": event.event_type}
+                for event in chat_history
+                if event.text
+            ],
+            radar_scores={
+                "communication": 85,
+                "technical": 75,
+                "culture_fit": 80,
+                "problem_solving": 78,
+            },
+            summary="Mocked Gemini fallback report.",
             strengths=["Mock strength"],
             weaknesses=["Mock weakness"],
-            recommended_action="HIRE"
+            recommendation="HIRE",
         )
 
     def extract_candidate_info(self, text: str) -> Any:
@@ -219,6 +226,24 @@ RUBRIC:
         
     def generate_interview_report(self, session: InterviewSession, history: list[InterviewEvent]) -> InterviewReport:
         return self.screen_interview(session, history)
-        
-    def score_test_attempt(self, attempt: Any) -> float:
-        return 0.0
+
+    def score_test_attempt(self, answers: list[dict[str, Any]], questions: list[TestQuestion]) -> dict[str, Any]:
+        question_map = {str(question.id): question for question in questions}
+        scored_answers = []
+        correct = 0
+        for answer in answers:
+            question = question_map.get(str(answer.get("question_id")))
+            selected = answer.get("selected_option_id")
+            is_correct = bool(question and selected == question.correct_option_id)
+            correct += 1 if is_correct else 0
+            scored_answers.append({**answer, "is_correct": is_correct})
+
+        max_score = len(questions)
+        percentage = round((correct / max_score) * 100, 2) if max_score else 0
+        return {
+            "score": correct,
+            "max_score": max_score,
+            "percentage": percentage,
+            "answers": scored_answers,
+            "ai_feedback": f"Candidate answered {correct} of {max_score} questions correctly.",
+        }
