@@ -27,6 +27,24 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Resolve Backend Private IP for Frontend Build
+        env:
+          PROJECT_TAG: ${{ secrets.AWS_PROJECT_TAG || 'hire-train-AI-HLSTeam-' }}
+          BACKEND_INSTANCE_ID_SECRET: ${{ secrets.BACKEND_INSTANCE_ID }}
+        run: |
+          BACKEND_INSTANCE_ID="$BACKEND_INSTANCE_ID_SECRET"
+          if [ -z "$BACKEND_INSTANCE_ID" ]; then
+            BACKEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=backend" "Name=tag:Project,Values=$PROJECT_TAG" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+          fi
+
+          BACKEND_PRIVATE_IP=$(aws ec2 describe-instances --instance-ids "$BACKEND_INSTANCE_ID" --query "Reservations[0].Instances[0].PrivateIpAddress" --output text)
+          if [ -z "$BACKEND_PRIVATE_IP" ] || [ "$BACKEND_PRIVATE_IP" = "None" ]; then
+            echo "Could not resolve backend private IP for frontend build."
+            exit 1
+          fi
+
+          echo "BACKEND_PRIVATE_IP=$BACKEND_PRIVATE_IP" >> $GITHUB_ENV
+
       # 1. Build and Push Backend Image
       - name: Build and Push Backend Image
         env:
@@ -43,8 +61,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME || 'hls-backend' }}
           IMAGE_TAG: latest
+          BACKEND_PRIVATE_IP: ${{ env.BACKEND_PRIVATE_IP }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG ./frontend
+          docker build --build-arg BACKEND_PRIVATE_URL=http://$BACKEND_PRIVATE_IP:8000 -t $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG ./frontend
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG
 
   deploy:
@@ -62,28 +81,53 @@ jobs:
 
       # 3. Fetch SSH Private Key and query EC2 Public & Private IPs dynamically
       - name: Prepare SSH Deployment Credentials
+        env:
+          PROJECT_TAG: ${{ secrets.AWS_PROJECT_TAG || 'hire-train-AI-HLSTeam-' }}
+          ECR_REPOSITORY_NAME_SECRET: ${{ secrets.ECR_REPOSITORY_NAME || 'hls-backend' }}
+          SECRETS_MANAGER_NAME_SECRET: ${{ secrets.SECRETS_MANAGER_NAME }}
+          SSH_KEY_SECRET_NAME_SECRET: ${{ secrets.SSH_KEY_SECRET_NAME }}
         run: |
+          set -euo pipefail
+
           # 1. Get AWS Account ID and ECR registry URL dynamically
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
           echo "ECR_REGISTRY=${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com" >> $GITHUB_ENV
           
-          # 2. Get static ECR Repository Name and Secrets Manager Name
-          echo "ECR_REPOSITORY_NAME=hls-backend" >> $GITHUB_ENV
-          echo "SECRETS_MANAGER_NAME=hire-train-AI-HLSTeam--backend-secrets" >> $GITHUB_ENV
+          # 2. Resolve names from GitHub secrets, falling back to Terraform defaults.
+          SECRETS_MANAGER_NAME="$SECRETS_MANAGER_NAME_SECRET"
+          if [ -z "$SECRETS_MANAGER_NAME" ]; then
+            SECRETS_MANAGER_NAME="${PROJECT_TAG}-backend-secrets"
+          fi
+
+          SSH_KEY_SECRET_NAME="$SSH_KEY_SECRET_NAME_SECRET"
+          if [ -z "$SSH_KEY_SECRET_NAME" ]; then
+            SSH_KEY_SECRET_NAME="${PROJECT_TAG}-ssh-key"
+          fi
+
+          echo "ECR_REPOSITORY_NAME=$ECR_REPOSITORY_NAME_SECRET" >> $GITHUB_ENV
+          echo "SECRETS_MANAGER_NAME=$SECRETS_MANAGER_NAME" >> $GITHUB_ENV
           
           # 3. Get SSH Private Key from Secrets Manager
-          aws secretsmanager get-secret-value --secret-id "hire-train-AI-HLSTeam--ssh-key" --query SecretString --output text > private_key.pem
+          aws secretsmanager get-secret-value --secret-id "$SSH_KEY_SECRET_NAME" --query SecretString --output text > private_key.pem
           chmod 600 private_key.pem
           
           # 4. Find Frontend and Backend Instance IDs
           FRONTEND_INSTANCE_ID="${{ secrets.FRONTEND_INSTANCE_ID }}"
           if [ -z "$FRONTEND_INSTANCE_ID" ]; then
-            FRONTEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=frontend" "Name=tag:Project,Values=hire-train-AI-HLSTeam-" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+            FRONTEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=frontend" "Name=tag:Project,Values=$PROJECT_TAG" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+          fi
+          if [ -z "$FRONTEND_INSTANCE_ID" ] || [ "$FRONTEND_INSTANCE_ID" = "None" ]; then
+            echo "Could not resolve frontend instance ID."
+            exit 1
           fi
           
           BACKEND_INSTANCE_ID="${{ secrets.BACKEND_INSTANCE_ID }}"
           if [ -z "$BACKEND_INSTANCE_ID" ]; then
-            BACKEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=backend" "Name=tag:Project,Values=hire-train-AI-HLSTeam-" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+            BACKEND_INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=backend" "Name=tag:Project,Values=$PROJECT_TAG" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+          fi
+          if [ -z "$BACKEND_INSTANCE_ID" ] || [ "$BACKEND_INSTANCE_ID" = "None" ]; then
+            echo "Could not resolve backend instance ID."
+            exit 1
           fi
           
           # 5. Query public and private IPs using the instance IDs
@@ -104,8 +148,23 @@ jobs:
         run: |
           cat << 'EOF' > backend-deploy.sh
           #!/bin/bash
+          set -euo pipefail
+
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY_NAME:backend-latest"
+          trap 'rm -f /home/ubuntu/backend_raw.json /home/ubuntu/backend.env' EXIT
+
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
-          docker pull $ECR_REGISTRY/$ECR_REPOSITORY_NAME:backend-latest
+
+          docker stop hls-backend || true
+          docker rm hls-backend || true
+          docker image rm "$IMAGE" || true
+          docker container prune -f || true
+          docker image prune -af || true
+          docker builder prune -af || true
+          docker system prune -af || true
+          docker system df || true
+
+          docker pull "$IMAGE"
           aws secretsmanager get-secret-value --secret-id $SECRETS_MANAGER_NAME --query SecretString --output text > /home/ubuntu/backend_raw.json
           python3 -c "import json,sys; d=json.load(open('/home/ubuntu/backend_raw.json')); print(''.join(f'{k}={v}\n' for k,v in d.items()), end='')" > /home/ubuntu/backend.env
           
@@ -125,10 +184,23 @@ jobs:
             fi
           fi
           
-          docker stop hls-backend || true
-          docker rm hls-backend || true
-          docker run -d --name hls-backend -p 8000:8000 --restart always --env-file /home/ubuntu/backend.env $ECR_REGISTRY/$ECR_REPOSITORY_NAME:backend-latest
-          rm -f /home/ubuntu/backend_raw.json /home/ubuntu/backend.env
+          docker run -d --name hls-backend -p 8000:8000 --restart always --env-file /home/ubuntu/backend.env "$IMAGE"
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+
+            if ! docker ps --filter "name=^/hls-backend$" --filter "status=running" --format "{{.Names}}" | grep -q "^hls-backend$"; then
+              docker logs hls-backend || true
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          docker logs hls-backend || true
+          exit 1
           EOF
           chmod +x backend-deploy.sh
           
@@ -144,11 +216,38 @@ jobs:
         run: |
           cat << 'EOF' > frontend-deploy.sh
           #!/bin/bash
+          set -euo pipefail
+
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY_NAME:frontend-latest"
+
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
-          docker pull $ECR_REGISTRY/$ECR_REPOSITORY_NAME:frontend-latest
           docker stop hls-frontend || true
           docker rm hls-frontend || true
-          docker run -d --name hls-frontend -p 80:3000 --restart always -e BACKEND_PRIVATE_URL=http://$BACKEND_PRIVATE_IP:8000 $ECR_REGISTRY/$ECR_REPOSITORY_NAME:frontend-latest
+          docker image rm "$IMAGE" || true
+          docker container prune -f || true
+          docker image prune -af || true
+          docker builder prune -af || true
+          docker system prune -af || true
+          docker system df || true
+
+          docker pull "$IMAGE"
+          docker run -d --name hls-frontend -p 80:3000 --restart always -e BACKEND_PRIVATE_URL=http://$BACKEND_PRIVATE_IP:8000 "$IMAGE"
+
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1/health; then
+              exit 0
+            fi
+
+            if ! docker ps --filter "name=^/hls-frontend$" --filter "status=running" --format "{{.Names}}" | grep -q "^hls-frontend$"; then
+              docker logs hls-frontend || true
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          docker logs hls-frontend || true
+          exit 1
           EOF
           chmod +x frontend-deploy.sh
           

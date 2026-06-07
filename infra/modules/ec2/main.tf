@@ -65,6 +65,13 @@ resource "aws_instance" "this" {
 
   user_data = var.user_data != "" ? var.user_data : null
 
+  root_block_device {
+    volume_size           = var.root_volume_size
+    volume_type           = var.root_volume_type
+    encrypted             = true
+    delete_on_termination = true
+  }
+
   # Conditionally attach an IAM instance profile only when the caller passes a
   # non-empty profile name. Backend EC2 uses this to pull from ECR via
   # PrivateLink without needing long-lived credentials.

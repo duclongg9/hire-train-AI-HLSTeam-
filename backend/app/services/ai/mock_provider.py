@@ -18,16 +18,16 @@ from app.services.ai.base import AIProvider
 
 
 class MockAIProvider(AIProvider):
-    def analyze_jd(self, campaign_id, jd_text: str) -> list[RubricCriterion]:
+    def analyze_jd(self, position_id, jd_text: str) -> list[RubricCriterion]:
         return [
-            RubricCriterion(campaign_id=campaign_id, category=RubricCategory.hard_skill, name="CRM and ticket handling", weight=25, description="Uses CRM tools and keeps complete case notes."),
-            RubricCriterion(campaign_id=campaign_id, category=RubricCategory.soft_skill, name="Communication and empathy", weight=30, description="Explains clearly and de-escalates frustrated customers."),
-            RubricCriterion(campaign_id=campaign_id, category=RubricCategory.experience, name="Customer support experience", weight=25, description="Has relevant support or service operations experience."),
-            RubricCriterion(campaign_id=campaign_id, category=RubricCategory.hard_skill, name="Problem solving", weight=15, description="Diagnoses issues and coordinates practical next steps."),
-            RubricCriterion(campaign_id=campaign_id, category=RubricCategory.certification, name="Relevant training", weight=5, description="Customer service, communication, or product support training."),
+            RubricCriterion(position_id=position_id, category=RubricCategory.hard_skill, name="CRM and ticket handling", weight=25, description="Uses CRM tools and keeps complete case notes."),
+            RubricCriterion(position_id=position_id, category=RubricCategory.soft_skill, name="Communication and empathy", weight=30, description="Explains clearly and de-escalates frustrated customers."),
+            RubricCriterion(position_id=position_id, category=RubricCategory.experience, name="Customer support experience", weight=25, description="Has relevant support or service operations experience."),
+            RubricCriterion(position_id=position_id, category=RubricCategory.hard_skill, name="Problem solving", weight=15, description="Diagnoses issues and coordinates practical next steps."),
+            RubricCriterion(position_id=position_id, category=RubricCategory.certification, name="Relevant training", weight=5, description="Customer service, communication, or product support training."),
         ]
 
-    def generate_test_questions(self, campaign_id, jd_text: str, rubric: list[RubricCriterion], count: int = 15) -> list[TestQuestion]:
+    def generate_test_questions(self, position_id, jd_text: str, rubric: list[RubricCriterion], count: int = 15) -> list[TestQuestion]:
         stems = [
             "A customer has contacted support three times without resolution. What should you do first?",
             "Which CRM note is most useful for the next support agent?",
@@ -54,7 +54,7 @@ class MockAIProvider(AIProvider):
         for index, stem in enumerate(stems[:count], start=1):
             questions.append(
                 TestQuestion(
-                    campaign_id=campaign_id,
+                    position_id=position_id,
                     question_text=stem,
                     difficulty="medium" if index % 3 else "hard",
                     skill_tag="customer_support",
@@ -91,7 +91,7 @@ class MockAIProvider(AIProvider):
             risk_flags.append("Repeated suspicious self-promotional keywords detected.")
         return CandidateScore(
             candidate_id=candidate.id,
-            campaign_id=candidate.campaign_id,
+            position_id=candidate.position_id,
             score=round(score, 2),
             badge=badge,
             ai_reasoning="Mock AI compared the CV text with the saved rubric and customer support keywords.",

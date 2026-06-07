@@ -8,11 +8,11 @@ from app.schemas.module1 import Candidate, CandidateScore, InterviewEvent, Inter
 
 class AIProvider(ABC):
     @abstractmethod
-    def analyze_jd(self, campaign_id, jd_text: str) -> list[RubricCriterion]:
+    def analyze_jd(self, position_id, jd_text: str) -> list[RubricCriterion]:
         raise NotImplementedError
 
     @abstractmethod
-    def generate_test_questions(self, campaign_id, jd_text: str, rubric: list[RubricCriterion], count: int = 15) -> list[TestQuestion]:
+    def generate_test_questions(self, position_id, jd_text: str, rubric: list[RubricCriterion], count: int = 15) -> list[TestQuestion]:
         raise NotImplementedError
 
     @abstractmethod
