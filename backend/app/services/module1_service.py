@@ -358,7 +358,7 @@ class Module1Service:
         self.repo.create_audit_log("CANDIDATE_APPLIED", "candidate", candidate.id, {"position_id": str(position.id)})
         return candidate
 
-    def apply_candidate_file(self, position_id: UUID, file_bytes: bytes, file_name: str) -> Candidate:
+    def apply_candidate_file(self, position_id: UUID, file_bytes: bytes, file_name: str, full_name: str | None = None, email: str | None = None, phone: str | None = None) -> Candidate:
         from app.core.document_parser import extract_text_from_pdf, extract_text_from_docx
         
         # Extract text based on extension
@@ -376,23 +376,23 @@ class Module1Service:
         # Extract details using Gemini
         info = self.ai.extract_candidate_info(cv_text)
         
-        full_name = info.get("full_name") or file_name.split("/")[-1].replace(f".{ext}", "")
-        email = info.get("email")
-        phone = info.get("phone")
+        final_full_name = full_name or info.get("full_name") or file_name.split("/")[-1].replace(f".{ext}", "")
+        final_email = email or info.get("email")
+        final_phone = phone or info.get("phone")
         
         # Fallback regex email parsing in case AI failed or returned null
-        if not email:
+        if not final_email:
             import re
             email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', cv_text)
             if email_match:
-                email = email_match.group(0)
+                final_email = email_match.group(0)
             else:
-                email = f"{full_name.lower().replace(' ', '.')}@example.com"
+                final_email = f"{final_full_name.lower().replace(' ', '.')}@example.com"
                 
         payload = CandidateApplyRequest(
-            full_name=full_name,
-            email=email,
-            phone=phone,
+            full_name=final_full_name,
+            email=final_email,
+            phone=final_phone,
             cv_text=cv_text,
             cv_file_name=file_name,
         )

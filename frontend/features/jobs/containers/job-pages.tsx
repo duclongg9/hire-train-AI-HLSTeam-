@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FormMessage, UploadPanel } from "@/shared/components/recruitment-common"
-import { formatApiError, getPublicJob, submitCandidateApplication, listPublicPositions, type BackendPosition } from "@/features/jobs/api/public-jobs-api"
+import { formatApiError, getPublicJob, submitCandidateApplication, applyFileToPublicJob, listPublicPositions, type BackendPosition } from "@/features/jobs/api/public-jobs-api"
 import {
   getJobBySlug,
   shbJobs,
@@ -496,14 +496,10 @@ export function JobApplyPage() {
     }
 
     try {
-      await submitCandidateApplication({
-        campaignId: job.id,
-        firstName: form.firstName,
-        lastName: form.lastName,
+      const fullName = `${form.lastName} ${form.firstName}`.replace(/\s+/g, " ").trim()
+      await applyFileToPublicJob(job.id, cvFile, {
+        full_name: fullName,
         email: form.email,
-        jobTitle: form.jobTitle,
-        workLocation: form.workLocation,
-        cvFileName: cvFile.name,
       })
 
       window.sessionStorage.setItem(

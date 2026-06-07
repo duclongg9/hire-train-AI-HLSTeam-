@@ -369,6 +369,9 @@ def apply_candidate(position_id: UUID, payload: CandidateApplyRequest, service: 
 def apply_candidate_file(
     position_id: UUID,
     file: UploadFile = File(...),
+    full_name: str | None = Form(None),
+    email: str | None = Form(None),
+    phone: str | None = Form(None),
     service: Module1Service = Depends(service_dep),
 ):
     ext = file.filename.split(".")[-1].lower()
@@ -377,7 +380,7 @@ def apply_candidate_file(
         
     try:
         content = file.file.read()
-        return service.apply_candidate_file(position_id, content, file.filename)
+        return service.apply_candidate_file(position_id, content, file.filename, full_name, email, phone)
     except AppError as e:
         raise e
     except Exception as e:

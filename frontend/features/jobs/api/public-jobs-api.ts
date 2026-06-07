@@ -19,9 +19,12 @@ export function applyToPublicJob(
   })
 }
 
-export function applyFileToPublicJob(positionId: string, file: File) {
+export function applyFileToPublicJob(positionId: string, file: File, payload?: { full_name: string; email: string; phone?: string | null }) {
   const form = new FormData()
   form.append("file", file)
+  if (payload?.full_name) form.append("full_name", payload.full_name)
+  if (payload?.email) form.append("email", payload.email)
+  if (payload?.phone) form.append("phone", payload.phone)
   return request<BackendCandidate>(`/public/jobs/${positionId}/apply-file`, {
     method: "POST",
     body: form,
