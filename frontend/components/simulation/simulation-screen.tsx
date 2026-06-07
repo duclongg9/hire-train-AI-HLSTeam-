@@ -274,7 +274,7 @@ export function SimulationScreen({ interviewToken, onClose }: SimulationScreenPr
     setRecognitionStatus("AI đang phát câu hỏi")
 
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      window.setTimeout(() => {
+      setTimeout(() => {
         setPhase("ready")
         setRecognitionStatus("Sẵn sàng ghi âm")
       }, 1200)
